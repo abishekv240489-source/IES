@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/ies-local;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+  flyway:
+    locations: classpath:db/migration-h2
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+ies:
+  ai-demo-fallback: true
+  auth:
+    enabled: false

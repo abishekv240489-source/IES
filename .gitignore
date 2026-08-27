@@ -1,0 +1,63 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.iml
+
+# Java
+backend/target/
+*.class
+*.jar
+*.war
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+.pnpm-store/
+*.tsbuildinfo
+
+# Python
+ai-worker/.venv/
+ai-worker/venv/
+ai-worker/__pycache__/
+ai-worker/.pytest_cache/
+ai-worker/.ruff_cache/
+*.egg-info/
+*.py[cod]
+
+# Runtime data - invoice documents and extracted PII must never enter Git
+data/
+storage/
+uploads/
+models/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.jsonl
+
+# Local databases, logs, reports and QA output
+*.db
+*.sqlite*
+*.log
+logs/
+coverage/
+reports/generated/
+.docx_qa/
+
+# Environment/build tooling
+.mvn/wrapper/maven-wrapper.jar

@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: ies-api
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 2000MB
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/ies}
+    username: ${DATABASE_USERNAME:ies_app}
+    password: ${DATABASE_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  batch:
+    job:
+      enabled: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:}
+
+server:
+  port: 8080
+  shutdown: graceful
+  error:
+    include-message: never
+
+ies:
+  storage-root: ${IES_STORAGE_ROOT:./data/invoices}
+  max-file-bytes: 20971520
+  max-pages: 20
+  ai-worker-url: ${IES_AI_WORKER_URL:http://localhost:8090}
+  ai-demo-fallback: ${IES_AI_DEMO_FALLBACK:false}
+  min-field-confidence: ${IES_MIN_FIELD_CONFIDENCE:0.70}
+  allowed-origins: ${IES_ALLOWED_ORIGINS:http://localhost:5173}
+  auth:
+    enabled: ${IES_AUTH_ENABLED:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
