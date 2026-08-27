@@ -1,0 +1,58 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Real or derived invoice data must never enter Git
+data/
+storage/
+uploads/
+invoices/
+ocr_output/
+extracted_output/
+*.pdf
+*.tif
+*.tiff
+*.png
+*.jpg
+*.jpeg
+*.jsonl
+*.db
+*.sqlite*
+*.dump
+*.sql
+
+# Local models and runtime artifacts
+models/
+*.gguf
+*.onnx
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Synthetic fixtures are allowed only in this explicit directory
+!tests/fixtures/
+!tests/fixtures/**
