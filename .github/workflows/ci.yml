@@ -56,3 +56,15 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
+
+  deployment-config:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-placeholder-not-a-secret
+      REDIS_PASSWORD: ci-placeholder-not-a-secret
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Docker Compose topology
+        run: docker compose config --quiet
+      - name: Render Kubernetes Kustomize baseline
+        run: kubectl kustomize deploy/k8s/base > /tmp/ies-kubernetes.yaml

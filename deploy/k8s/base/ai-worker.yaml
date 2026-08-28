@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-worker
+  labels: {app.kubernetes.io/name: ai-worker, app.kubernetes.io/part-of: ies}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: ai-worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: ai-worker, app.kubernetes.io/part-of: ies}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: ai-worker
+          image: ies-ai-worker
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8090}]
+          envFrom:
+            - configMapRef: {name: ies-runtime-config}
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 6Gi}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: temp, mountPath: /tmp}
+            - {name: model-cache, mountPath: /home/ies}
+      volumes:
+        - name: temp
+          emptyDir: {sizeLimit: 2Gi}
+        - name: model-cache
+          emptyDir: {sizeLimit: 5Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-worker
+spec:
+  selector: {app.kubernetes.io/name: ai-worker}
+  ports: [{name: http, port: 8090, targetPort: http}]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-worker
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: ai-worker}
+  minReplicas: 2
+  maxReplicas: 8
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: ai-worker}

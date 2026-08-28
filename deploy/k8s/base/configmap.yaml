@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ies-runtime-config
+data:
+  DATABASE_URL: jdbc:postgresql://postgres:5432/ies
+  DATABASE_USERNAME: ies_app
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  IES_STORAGE_ROOT: /var/lib/ies/invoices
+  IES_AI_WORKER_URL: http://ai-worker:8090
+  IES_AI_DEMO_FALLBACK: "false"
+  IES_ALLOWED_ORIGINS: https://ies.example.com
+  IES_AUTH_ENABLED: "true"
+  JWT_ISSUER_URI: https://login.microsoftonline.com/REPLACE_TENANT_ID/v2.0
+  IES_MAPPING_PROVIDER: ollama
+  OLLAMA_BASE_URL: http://ollama:11434
+  OLLAMA_MODEL: qwen2.5:7b-instruct-q4_K_M
+  IES_MIN_FIELD_CONFIDENCE: "0.70"
+  IES_MAX_FILE_BYTES: "20971520"
+  IES_MAX_PAGES: "20"
+  PADDLEOCR_LANG: en

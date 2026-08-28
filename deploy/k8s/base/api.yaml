@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: {app.kubernetes.io/name: api, app.kubernetes.io/part-of: ies}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: api}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: api, app.kubernetes.io/part-of: ies}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: ies-api
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080}]
+          envFrom:
+            - configMapRef: {name: ies-runtime-config}
+            - secretRef: {name: ies-runtime-secrets}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: invoices, mountPath: /var/lib/ies/invoices}
+            - {name: temp, mountPath: /tmp}
+      volumes:
+        - name: invoices
+          persistentVolumeClaim: {claimName: ies-invoices}
+        - name: temp
+          emptyDir: {sizeLimit: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector: {app.kubernetes.io/name: api}
+  ports: [{name: http, port: 8080, targetPort: http}]

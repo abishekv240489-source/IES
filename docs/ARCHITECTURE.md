@@ -30,6 +30,14 @@
 
 `200 invoices/hour` equals 3.33 invoices/minute. A 15-second per-document ceiling requires at least one continuously utilized worker; bursts, multi-page documents and tail latency require parallel workers. The target topology starts with four OCR/mapping worker slots and measures p50/p95/p99 latency separately.
 
+## Deployment model
+
+- The local Compose topology exposes every port on loopback only and places the browser behind a same-origin Nginx proxy.
+- API, AI-worker and web images run without application-level root privileges and use health probes plus explicit memory bounds.
+- Kubernetes scales the CPU-heavy AI-worker tier independently from the API and UI.
+- PostgreSQL, Redis, Kafka, Ollama/Qwen, ingress and secrets remain environment services rather than cloud-vendor-specific manifests.
+- The baseline keeps one API replica because source documents use a `ReadWriteOnce` volume. Multiple API replicas require encrypted shared storage or an object-storage implementation.
+
 ## Accuracy model
 
 Accuracy is calculated at field level on a frozen, labelled holdout set. Required-field exact/normalized match, line-item F1 and full-document success are reported separately. Confidence is a routing signal, not a substitute for measured accuracy.

@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ies
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - storage.yaml
+  - api.yaml
+  - ai-worker.yaml
+  - web.yaml
+  - network-policies.yaml
+images:
+  - name: ies-api
+    newName: ghcr.io/abishekv240489-source/ies-api
+    newTag: 0.2.0
+  - name: ies-ai-worker
+    newName: ghcr.io/abishekv240489-source/ies-ai-worker
+    newTag: 0.2.0
+  - name: ies-web
+    newName: ghcr.io/abishekv240489-source/ies-web
+    newTag: 0.2.0
