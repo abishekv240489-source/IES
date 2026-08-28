@@ -23,7 +23,7 @@ ocr = [
   "paddleocr>=3.3,<4",
   # Paddle 3.3.x has a Windows/Linux CPU OneDNN PIR regression. Keep the
   # verified accelerated runtime until the upstream fix is released.
-  "paddlepaddle==3.2.2",
+  "paddlepaddle==3.3.1",
   "opencv-python-headless>=4.11,<5"
 ]
 test = ["pytest>=8.4,<9", "pytest-cov>=6,<7", "ruff>=0.12,<1"]
