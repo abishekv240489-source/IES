@@ -26,7 +26,7 @@ ocr = [
   "paddlepaddle==3.2.2",
   "opencv-python-headless>=4.11,<5"
 ]
-test = ["pytest>=8.4,<9", "pytest-cov>=6,<7", "ruff>=0.12,<1"]
+test = ["pytest>=8.4,<9", "pytest-cov>=6,<8", "ruff>=0.12,<1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
