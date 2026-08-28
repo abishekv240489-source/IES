@@ -37,7 +37,7 @@ jobs:
         working-directory: ai-worker
         run: |
           cd ..
-          pytest ai-worker/tests evaluation/tests
+          python -m pytest ai-worker/tests evaluation/tests
           ruff check ai-worker/app ai-worker/tests evaluation
           python evaluation/generate_synthetic.py --output-root /tmp/ies-synthetic --count 3
           python evaluation/evaluate.py --truth /tmp/ies-synthetic/ground_truth --predictions /tmp/ies-predictions --report-only
