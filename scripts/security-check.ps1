@@ -34,3 +34,4 @@ foreach ($pattern in $blocked) {
 }
 
 Write-Host 'Security check passed: no forbidden artifacts or obvious embedded secrets found.' -ForegroundColor Green
+exit 0
