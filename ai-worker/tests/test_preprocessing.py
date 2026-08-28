@@ -8,3 +8,5 @@ def test_quality_score_is_bounded() -> None:
     assert 0 <= estimate_quality(image) <= 1
     prepared = prepare_for_ocr(image)
     assert 0 <= prepared.quality_score <= 1
+    assert prepared.image.ndim == 3
+    assert prepared.image.shape[2] == 3

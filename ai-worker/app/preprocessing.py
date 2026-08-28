@@ -42,7 +42,10 @@ def prepare_for_ocr(image: np.ndarray) -> PreparedImage:
     gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
     gray = _deskew(gray, cv2)
     prepared_score = estimate_quality(gray)
-    return PreparedImage(image=gray, quality_score=max(original_score, prepared_score), transformed=True)
+    # PaddleOCR v3's document-orientation and unwarping stages require an HWC
+    # three-channel image even when the enhanced content is monochrome.
+    three_channel = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    return PreparedImage(image=three_channel, quality_score=max(original_score, prepared_score), transformed=True)
 
 
 def _gray(image: np.ndarray, cv2: object) -> np.ndarray:

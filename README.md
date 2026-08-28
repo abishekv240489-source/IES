@@ -73,6 +73,8 @@ The Kustomize baseline in [`deploy/k8s`](deploy/k8s/README.md) uses non-root con
 
 The requirements `>=95% field accuracy`, `>=200 invoices/hour`, and `<15s latency` are acceptance targets. They are not claimed until the benchmark set contains labelled, representative invoices and the generated report passes all gates. See [docs/ACCEPTANCE_TEST_PLAN.md](docs/ACCEPTANCE_TEST_PLAN.md).
 
+The repository includes a deterministic synthetic invoice generator, degraded-scan variants, an API benchmark runner, strict missing-document penalties, line-item metrics and quality/layout breakdowns. See [docs/BENCHMARKING.md](docs/BENCHMARKING.md). Synthetic results are regression evidence only and are never presented as production accuracy.
+
 ## Confidential GitHub workflow
 
 Do not push invoice samples, OCR text, extracted JSON, model weights, database dumps, tokens, or `.env` files. Before every push:

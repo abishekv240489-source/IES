@@ -19,6 +19,15 @@ class Settings:
     embedded_text_min_chars: int = int(os.getenv("IES_EMBEDDED_TEXT_MIN_CHARS", "120"))
     demo_fallback: bool = _bool("IES_AI_DEMO_FALLBACK", True)
     paddle_language: str = os.getenv("PADDLEOCR_LANG", "en")
+    paddle_enable_mkldnn: bool = _bool("PADDLEOCR_ENABLE_MKLDNN", True)
+    paddle_detection_model: str = os.getenv("PADDLEOCR_DETECTION_MODEL", "PP-OCRv5_mobile_det")
+    paddle_recognition_model: str = os.getenv("PADDLEOCR_RECOGNITION_MODEL", "en_PP-OCRv5_mobile_rec")
+    paddle_recognition_batch_size: int = int(os.getenv("PADDLEOCR_RECOGNITION_BATCH_SIZE", "16"))
+    paddle_detection_limit_side: int = int(os.getenv("PADDLEOCR_DETECTION_LIMIT_SIDE", "1280"))
+    paddle_detection_limit_type: str = os.getenv("PADDLEOCR_DETECTION_LIMIT_TYPE", "max")
+    paddle_use_orientation: bool = _bool("PADDLEOCR_USE_ORIENTATION", False)
+    paddle_use_unwarping: bool = _bool("PADDLEOCR_USE_UNWARPING", False)
+    paddle_use_textline_orientation: bool = _bool("PADDLEOCR_USE_TEXTLINE_ORIENTATION", False)
 
 
 settings = Settings()

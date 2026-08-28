@@ -65,8 +65,24 @@ def _load_image(path: Path) -> np.ndarray:
 @lru_cache(maxsize=1)
 def _paddle_engine():
     from paddleocr import PaddleOCR
-    return PaddleOCR(lang=settings.paddle_language, use_doc_orientation_classify=True,
-                     use_doc_unwarping=True, use_textline_orientation=True)
+
+    model_kwargs: dict[str, object] = {}
+    if settings.paddle_detection_model:
+        model_kwargs["text_detection_model_name"] = settings.paddle_detection_model
+    if settings.paddle_recognition_model:
+        model_kwargs["text_recognition_model_name"] = settings.paddle_recognition_model
+    if not model_kwargs:
+        model_kwargs["lang"] = settings.paddle_language
+    return PaddleOCR(
+        **model_kwargs,
+        text_recognition_batch_size=settings.paddle_recognition_batch_size,
+        text_det_limit_side_len=settings.paddle_detection_limit_side,
+        text_det_limit_type=settings.paddle_detection_limit_type,
+        use_doc_orientation_classify=settings.paddle_use_orientation,
+        use_doc_unwarping=settings.paddle_use_unwarping,
+        use_textline_orientation=settings.paddle_use_textline_orientation,
+        enable_mkldnn=settings.paddle_enable_mkldnn,
+    )
 
 
 def _paddle_page(image: np.ndarray, page_number: int) -> OcrPage:
