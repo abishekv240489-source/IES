@@ -68,3 +68,9 @@ jobs:
         run: docker compose config --quiet
       - name: Render Kubernetes Kustomize baseline
         run: kubectl kustomize deploy/k8s/base > /tmp/ies-kubernetes.yaml
+      - name: Build API container image
+        run: docker build --tag ies-api:ci ./backend
+      - name: Build web container image
+        run: docker build --tag ies-web:ci ./frontend
+      - name: Build AI-worker container image
+        run: docker build --tag ies-ai-worker:ci ./ai-worker
