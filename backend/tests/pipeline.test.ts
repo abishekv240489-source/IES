@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -57,7 +57,10 @@ let processor: InvoiceProcessor
 
 beforeAll(async () => {
   storageRoot = await mkdtemp(resolve(tmpdir(), 'ies-node-test-'))
-  await postgres.exec(await readFile(resolve('db/migrations/001_node_microservices.sql'), 'utf8'))
+  const migrations = resolve('db/migrations')
+  for (const file of (await readdir(migrations)).filter((name) => /^\d+_.+\.sql$/.test(name)).sort()) {
+    await postgres.exec(await readFile(resolve(migrations, file), 'utf8'))
+  }
   const config = loadConfig({
     NODE_ENV: 'test',
     IES_STORAGE_ROOT: storageRoot,
@@ -126,6 +129,21 @@ describe('Node microservice pipeline', () => {
     expect(fields.rows.map((row) => row.field_path)).toContain('header.invoiceNumber')
     const lines = await postgres.query<{ count: number }>('SELECT count(*)::integer AS count FROM invoice_line_items')
     expect(lines.rows[0]?.count).toBe(1)
+    const sopHeader = await postgres.query<{ invoice_number: string; processing_state: string }>(
+      'SELECT invoice_number, processing_state FROM invoice_headers WHERE invoice_id = $1',
+      [jobId],
+    )
+    expect(sopHeader.rows[0]).toMatchObject({ invoice_number: 'TEST-100', processing_state: 'Approved' })
+    const sopFields = await postgres.query<{ field_name: string }>(
+      'SELECT field_name FROM field_extraction_details ORDER BY field_name',
+    )
+    expect(sopFields.rows.map((row) => row.field_name)).toContain('header.invoiceNumber')
+    const sopLines = await postgres.query<{ count: number }>('SELECT count(*)::integer AS count FROM line_items')
+    expect(sopLines.rows[0]?.count).toBe(1)
+    const sopFiles = await postgres.query<{ count: number }>('SELECT count(*)::integer AS count FROM file_details')
+    expect(sopFiles.rows[0]?.count).toBe(1)
+    const sopAudit = await postgres.query<{ count: number }>('SELECT count(*)::integer AS count FROM audit_trails')
+    expect(Number(sopAudit.rows[0]?.count)).toBeGreaterThan(0)
     const tasks = await postgres.query<{ state: string }>('SELECT state FROM processing_tasks')
     expect(tasks.rows[0]?.state).toBe('COMPLETED')
   })
