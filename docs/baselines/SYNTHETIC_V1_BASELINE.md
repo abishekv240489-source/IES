@@ -3,7 +3,7 @@
 - Run date: 2026-08-28
 - Dataset: 9 deterministic, non-sensitive one-page invoices (3 digital, 3 clean scans, 3 degraded scans)
 - Runtime: Windows CPU, 8 logical processors, PaddleOCR 3.7.0, PaddlePaddle 3.2.2, OneDNN enabled
-- Pipeline: Spring API -> PaddleOCR -> deterministic heuristic mapper
+- Pipeline: Node.js API -> Node.js processor -> PaddleOCR -> deterministic heuristic mapper
 
 ## Results
 

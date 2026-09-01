@@ -12,7 +12,7 @@ Cloud-agnostic invoice ingestion, OCR, structured extraction, validation, and hu
 - Structured header, vendor, bill-to, vessel, amount, bank and line-item fields
 - Deterministic validation, confidence flags and reviewer corrections
 - React/MUI operational dashboard and invoice review cockpit
-- PostgreSQL migrations; Redis/Kafka-ready local topology
+- Versioned PostgreSQL schema with normalized extraction, audit, benchmark and durable task tables
 - Accuracy, latency and throughput benchmark harnesses (targets are measured, never assumed)
 
 ## Architecture
@@ -20,10 +20,12 @@ Cloud-agnostic invoice ingestion, OCR, structured extraction, validation, and hu
 ```text
 React 18 + MUI
       |
-Spring Boot 3.5 / Java 21 API
-      |--- PostgreSQL (transactional state + audit)
-      |--- Redis (cache/idempotency; production profile)
-      |--- Kafka (durable work events; production profile)
+Node.js 22 + Fastify API microservice
+      |--- PostgreSQL (transactional state + audit + durable task queue)
+      `--- shared encrypted/object document storage
+                    |
+Node.js 22 processor microservice
+      |--- horizontally concurrent task leasing
       |
 Python AI worker
       |--- embedded-text detection
@@ -32,20 +34,20 @@ Python AI worker
       `--- Qwen 2.5 7B via Ollama-compatible API
 ```
 
-The screenshot's `Spring Boot 5.1.x` is interpreted as **Spring Batch 5.1.x**. Spring Boot itself is pinned to the supported 3.5 line for Java 21 compatibility. The AI runtime is isolated as a Python service because PaddleOCR is Python-native; the enterprise API, workflow and data boundary remain Java/Spring.
+The backend is now split into independently deployable Node.js microservices. The API owns HTTP ingestion, review and query endpoints; the processor leases durable tasks from PostgreSQL and owns asynchronous OCR/mapping orchestration. The Python AI runtime remains isolated because PaddleOCR is Python-native.
 
 ## One-command container demo
 
 Prerequisites: Docker Desktop or Docker Engine with Compose.
 
-1. Copy `.env.example` to `.env` and replace both example passwords with strong local values.
+1. Copy `.env.example` to `.env` and replace the example database password with a strong local value.
 2. Build and start the complete stack:
 
    ```powershell
    docker compose up --build -d
    ```
 
-3. Open `http://127.0.0.1:8088`. The API is also available at `http://127.0.0.1:8080` and Swagger UI at `http://127.0.0.1:8080/swagger-ui/index.html`.
+3. Open `http://127.0.0.1:8088`. The API is also available at `http://127.0.0.1:8080`; API and processor readiness endpoints are `/actuator/health/readiness` and `http://127.0.0.1:8081/ready`.
 4. Pull the preferred Qwen model when the machine has enough memory/disk:
 
    ```powershell
@@ -56,14 +58,14 @@ Until Qwen is pulled, `IES_AI_DEMO_FALLBACK=true` keeps the workflow usable and 
 
 ## Local developer mode
 
-Prerequisites: Java 21+, Maven 3.9+, Node 20+ and Python 3.11+.
+Prerequisites: PostgreSQL 15+, Node 22+ with pnpm 11, and Python 3.11+.
 
-1. Start dependencies: `docker compose up -d postgres redis kafka ollama`.
+1. Start dependencies: `docker compose up -d postgres ollama`.
 2. Start the AI worker from `ai-worker`: `uvicorn app.main:app --port 8090`.
-3. Start the API from `backend`: `mvn spring-boot:run -Dspring-boot.run.profiles=local`.
-4. Start the UI from `frontend`: `pnpm install && pnpm run dev`.
+3. From `backend`, run `pnpm install --frozen-lockfile`, `pnpm migrate`, then start `pnpm dev:api` and `pnpm dev:processor` in separate terminals.
+4. Start the UI from `frontend`: `pnpm install --frozen-lockfile && pnpm run dev`.
 
-The local Spring profile uses H2 and disables authentication for fast development. The container topology uses PostgreSQL and still defaults to demo authentication-off; production deployment must enable OIDC/JWT.
+Every runtime uses PostgreSQL; there is no H2-only schema. Local and container demos default to authentication-off, while production deployment must enable OIDC/JWT.
 
 ## Kubernetes
 
@@ -74,6 +76,8 @@ The Kustomize baseline in [`deploy/k8s`](deploy/k8s/README.md) uses non-root con
 The requirements `>=95% field accuracy`, `>=200 invoices/hour`, and `<15s latency` are acceptance targets. They are not claimed until the benchmark set contains labelled, representative invoices and the generated report passes all gates. See [docs/ACCEPTANCE_TEST_PLAN.md](docs/ACCEPTANCE_TEST_PLAN.md).
 
 The repository includes a deterministic synthetic invoice generator, degraded-scan variants, an API benchmark runner, strict missing-document penalties, line-item metrics and quality/layout breakdowns. See [docs/BENCHMARKING.md](docs/BENCHMARKING.md). Synthetic results are regression evidence only and are never presented as production accuracy.
+
+The current Node/PaddleOCR synthetic regression passes all configured gates at 98.48% scalar-field accuracy, 100% critical-field accuracy, 98.11% line-item F1, 1,357 invoices/hour and 12.324s p95 latency after model warm-up. See [the Node v2 baseline](docs/baselines/SYNTHETIC_NODE_V2_BASELINE.md) for scope and limitations.
 
 ## Confidential GitHub workflow
 

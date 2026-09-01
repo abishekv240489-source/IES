@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor
+  labels: {app.kubernetes.io/name: processor, app.kubernetes.io/part-of: ies}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: processor}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: processor, app.kubernetes.io/part-of: ies}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: processor
+          image: ies-processor
+          imagePullPolicy: IfNotPresent
+          ports: [{name: health, containerPort: 8081}]
+          envFrom:
+            - configMapRef: {name: ies-runtime-config}
+            - secretRef: {name: ies-runtime-secrets}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "2", memory: 512Mi}
+          readinessProbe:
+            httpGet: {path: /ready, port: health}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: health}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: invoices, mountPath: /var/lib/ies/invoices}
+            - {name: temp, mountPath: /tmp}
+      volumes:
+        - name: invoices
+          persistentVolumeClaim: {claimName: ies-invoices}
+        - name: temp
+          emptyDir: {sizeLimit: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: processor
+spec:
+  selector: {app.kubernetes.io/name: processor}
+  ports: [{name: health, port: 8081, targetPort: health}]

@@ -215,12 +215,14 @@ def draw_invoice(path: Path, invoice: dict[str, Any], palette_index: int = 0) ->
         ("Subtotal", invoice["amounts"]["subtotal"]),
         ("Tax Amount", invoice["amounts"]["tax"]),
         ("Shipping", invoice["amounts"]["shipping"]),
+        ("Discount", invoice["amounts"]["discount"]),
+        ("Exchange Rate", invoice["amounts"]["exchangeRate"]),
     ]
     for row, (label, value) in enumerate(total_rows):
         y = totals_top - row * 17
         canvas.drawString(label_x, y, label)
         canvas.drawRightString(value_x, y, _money(value))
-    total_y = totals_top - 58
+    total_y = totals_top - 92
     canvas.setFillColor(primary)
     canvas.roundRect(label_x - 10, total_y - 7, 147, 25, 4, fill=1, stroke=0)
     canvas.setFillColor(colors.white)

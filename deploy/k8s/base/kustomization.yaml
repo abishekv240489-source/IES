@@ -6,12 +6,16 @@ resources:
   - configmap.yaml
   - storage.yaml
   - api.yaml
+  - processor.yaml
   - ai-worker.yaml
   - web.yaml
   - network-policies.yaml
 images:
   - name: ies-api
     newName: ghcr.io/abishekv240489-source/ies-api
+    newTag: 0.2.0
+  - name: ies-processor
+    newName: ghcr.io/abishekv240489-source/ies-processor
     newTag: 0.2.0
   - name: ies-ai-worker
     newName: ghcr.io/abishekv240489-source/ies-ai-worker

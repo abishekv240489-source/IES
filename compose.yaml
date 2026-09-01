@@ -17,40 +17,6 @@ services:
       retries: 20
     security_opt: ["no-new-privileges:true"]
 
-  redis:
-    image: redis:7.4-alpine
-    restart: unless-stopped
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
-    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
-    ports: ["127.0.0.1:6379:6379"]
-    volumes: ["ies-redis:/data"]
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    security_opt: ["no-new-privileges:true"]
-
-  kafka:
-    image: apache/kafka:3.9.1
-    restart: unless-stopped
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-    ports: ["127.0.0.1:9092:9092"]
-    volumes: ["ies-kafka:/var/lib/kafka/data"]
-    security_opt: ["no-new-privileges:true"]
-
   ollama:
     image: ollama/ollama:0.11.4
     restart: unless-stopped
@@ -114,19 +80,16 @@ services:
   api:
     build:
       context: ./backend
+      target: api
     image: ies-api:local
     restart: unless-stopped
     environment:
-      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ies}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${POSTGRES_DB:-ies}
       DATABASE_USERNAME: ${POSTGRES_USER:-ies_app}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       IES_STORAGE_ROOT: /var/lib/ies/invoices
-      IES_AI_WORKER_URL: http://ai-worker:8090
-      IES_AI_DEMO_FALLBACK: ${IES_AI_DEMO_FALLBACK:-true}
       IES_ALLOWED_ORIGINS: ${IES_ALLOWED_ORIGINS:-http://localhost:8088}
       IES_AUTH_ENABLED: ${IES_AUTH_ENABLED:-false}
       JWT_ISSUER_URI: ${JWT_ISSUER_URI:-}
@@ -135,10 +98,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ai-worker:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health/readiness"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/actuator/health/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       start_period: 30s
@@ -146,7 +107,45 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1g
+          memory: 512m
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    security_opt: ["no-new-privileges:true"]
+
+  processor:
+    build:
+      context: ./backend
+      target: processor
+    image: ies-processor:local
+    restart: unless-stopped
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${POSTGRES_DB:-ies}
+      DATABASE_USERNAME: ${POSTGRES_USER:-ies_app}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      IES_STORAGE_ROOT: /var/lib/ies/invoices
+      IES_AI_WORKER_URL: http://ai-worker:8090
+      IES_MIN_FIELD_CONFIDENCE: ${IES_MIN_FIELD_CONFIDENCE:-0.70}
+      IES_PROCESSOR_CONCURRENCY: ${IES_PROCESSOR_CONCURRENCY:-4}
+      IES_PROCESSOR_POLL_MS: ${IES_PROCESSOR_POLL_MS:-500}
+    ports: ["127.0.0.1:8081:8081"]
+    volumes: ["ies-invoices:/var/lib/ies/invoices"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     read_only: true
     tmpfs: ["/tmp:size=256m,mode=1777"]
     security_opt: ["no-new-privileges:true"]
@@ -168,8 +167,6 @@ services:
 
 volumes:
   ies-postgres:
-  ies-redis:
-  ies-kafka:
   ies-ollama:
   ies-paddle-cache:
   ies-invoices:
