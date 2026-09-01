@@ -12,6 +12,14 @@ import { ApiError } from './shared/errors.js'
 import { id } from './shared/ids.js'
 
 const EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff'])
+const CONTENT_TYPES = new Map([
+  ['.pdf', 'application/pdf'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.tif', 'image/tiff'],
+  ['.tiff', 'image/tiff'],
+])
 
 export interface StoredUpload {
   originalFilename: string
@@ -42,6 +50,10 @@ export function storagePath(config: Config, storedFilename: string): string {
   const candidate = resolve(root, storedFilename)
   if (!candidate.startsWith(`${root}${sep}`)) throw new ApiError(400, 'Unsafe storage path', 'UNSAFE_PATH')
   return candidate
+}
+
+export function invoiceContentType(filename: string): string {
+  return CONTENT_TYPES.get(extname(filename).toLowerCase()) ?? 'application/octet-stream'
 }
 
 export async function removeStored(path: string): Promise<void> {
@@ -100,7 +112,7 @@ export async function storeUpload(part: MultipartFile, config: Config): Promise<
     storedFilename,
     path: destination,
     sha256: digest.digest('hex'),
-    contentType: part.mimetype || 'application/octet-stream',
+    contentType: invoiceContentType(originalFilename),
     sizeBytes,
   }
 }

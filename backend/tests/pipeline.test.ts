@@ -32,7 +32,7 @@ function multipart(filename: string, content: Buffer) {
   return {
     contentType: `multipart/form-data; boundary=${boundary}`,
     body: Buffer.concat([
-      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`),
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
       content,
       Buffer.from(`\r\n--${boundary}--\r\n`),
     ]),
@@ -122,6 +122,13 @@ describe('Node microservice pipeline', () => {
     )
     expect(job.engine).toBe('paddleocr+qwen-test')
     expect(job.confidence).toBe(0.99)
+
+    const source = await api.inject({ method: 'GET', url: `/api/v1/invoices/${jobId}/source` })
+    expect(source.statusCode).toBe(200)
+    expect(source.headers['content-type']).toContain('application/pdf')
+    expect(source.headers['content-disposition']).toContain('invoice.pdf')
+    expect(source.headers['x-frame-options']).toBe('SAMEORIGIN')
+    expect(source.rawPayload).toEqual(Buffer.from('%PDF-1.4\n%%EOF\n'))
 
     const fields = await postgres.query<{ field_path: string }>(
       'SELECT field_path FROM extracted_fields ORDER BY field_path',

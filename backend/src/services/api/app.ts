@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
 
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
@@ -15,7 +17,7 @@ import { JOB_STATUSES } from '../../domain/types.js'
 import { validateInvoice } from '../../domain/validation.js'
 import { ApiError } from '../../shared/errors.js'
 import { id } from '../../shared/ids.js'
-import { removeStored, storeUpload, type StoredUpload } from '../../storage.js'
+import { invoiceContentType, removeStored, storagePath, storeUpload, type StoredUpload } from '../../storage.js'
 
 const reviewSchema = z.object({
   extraction: z.record(z.string(), z.unknown()),
@@ -184,6 +186,40 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
     const result = await database.query<JobResponse>(`SELECT ${JOB_COLUMNS} FROM invoice_jobs WHERE tenant_id = $1 AND id = $2`, [LOCAL_TENANT_ID, jobId])
     if (!result.rows[0]) throw new ApiError(404, 'Invoice not found', 'NOT_FOUND')
     return publicJob(result.rows[0])
+  })
+
+  app.get('/api/v1/invoices/:id/source', async (request, reply) => {
+    await auth.actor(request.headers.authorization)
+    const jobId = uuidSchema.parse((request.params as { id: string }).id)
+    const result = await database.query<{ storedFilename: string; filename: string; contentType: string }>(
+      `SELECT stored_filename AS "storedFilename", original_filename AS filename, content_type AS "contentType"
+       FROM invoice_jobs WHERE tenant_id = $1 AND id = $2`,
+      [LOCAL_TENANT_ID, jobId],
+    )
+    const source = result.rows[0]
+    if (!source) throw new ApiError(404, 'Invoice not found', 'NOT_FOUND')
+
+    const path = storagePath(config, source.storedFilename)
+    let fileSize: number
+    try {
+      fileSize = (await stat(path)).size
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new ApiError(404, 'Source invoice is unavailable', 'SOURCE_NOT_FOUND')
+      }
+      throw error
+    }
+
+    const encodedFilename = encodeURIComponent(source.filename).replace(/[!'()*]/g, (character) =>
+      `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
+    reply.header('content-type', invoiceContentType(source.filename))
+    reply.header('content-length', fileSize)
+    reply.header('content-disposition', `inline; filename*=UTF-8''${encodedFilename}`)
+    reply.header('cache-control', 'private, no-store')
+    reply.header('x-frame-options', 'SAMEORIGIN')
+    reply.header('content-security-policy', "frame-ancestors 'self'")
+    return reply.send(createReadStream(path))
   })
 
   app.get('/api/v1/invoices/:id/events', async (request) => {
