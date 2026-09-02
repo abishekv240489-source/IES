@@ -1,4 +1,5 @@
-from app.mapper import confidence, heuristic_map
+from app.mapper import _fill_missing, _ready_for_fast_path, heuristic_map
+from app.models import ExtractedField, Invoice
 
 
 def test_heuristic_mapper_extracts_core_fields() -> None:
@@ -18,7 +19,6 @@ def test_heuristic_mapper_extracts_core_fields() -> None:
     assert invoice.header.invoiceDate.value == "2026-08-20"
     assert invoice.amounts.total.value == 1090.0
     assert invoice.bankDetails.accountNumber.value == "072-140318-8"
-    assert confidence(invoice, 0.9) > 0.6
 
 
 def test_missing_values_are_not_invented() -> None:
@@ -105,3 +105,23 @@ def test_heuristic_mapper_handles_degraded_ocr_line_item_order() -> None:
     assert invoice.lineItems[0].lineNumber.value == "1"
     assert invoice.lineItems[0].quantity.value == 1.0
     assert invoice.lineItems[0].chargeCode.value == "AGENCY"
+
+
+def test_hybrid_fast_path_requires_complete_evidence() -> None:
+    incomplete = heuristic_map("Invoice No: INV-100")
+    assert not _ready_for_fast_path(incomplete)
+
+
+def test_evidence_merge_only_fills_missing_qwen_values() -> None:
+    qwen = Invoice()
+    qwen.header.invoiceNumber = ExtractedField(value="QWEN-100", confidence=0.8, source="qwen", page=1)
+    evidence = Invoice()
+    evidence.header.invoiceNumber = ExtractedField(value="RULE-100", confidence=0.7, source="heuristic")
+    evidence.header.currency = ExtractedField(value="USD", confidence=0.75, source="heuristic")
+
+    merged = _fill_missing(qwen, evidence)
+
+    assert merged.header.invoiceNumber.value == "QWEN-100"
+    assert merged.header.invoiceNumber.source == "qwen"
+    assert merged.header.currency.value == "USD"
+    assert merged.header.currency.source == "heuristic"

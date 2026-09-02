@@ -151,7 +151,8 @@ export class InvoiceProcessor {
         )
         await audit(client, { tenantId: task.tenantId, jobId: task.jobId, batchId: task.batchId, action: finalStatus,
           actor: this.workerId, detail: `Extraction completed using ${extraction.engine}`, metadata: {
-            confidence: extraction.overall_confidence, processingMs: extraction.processing_ms, warnings: extraction.warnings,
+            confidence: extraction.overall_confidence, confidenceBreakdown: extraction.confidence_breakdown,
+            processingMs: extraction.processing_ms, warnings: extraction.warnings,
           } })
         await this.refreshBatch(client, task.batchId)
       })

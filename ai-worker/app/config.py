@@ -10,14 +10,16 @@ def _bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    mapping_provider: str = os.getenv("IES_MAPPING_PROVIDER", "ollama").lower()
+    mapping_provider: str = os.getenv("IES_MAPPING_PROVIDER", "hybrid").lower()
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
     ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
     request_timeout_seconds: float = float(os.getenv("IES_LLM_TIMEOUT_SECONDS", "10"))
+    hybrid_min_populated_fields: int = int(os.getenv("IES_HYBRID_MIN_POPULATED_FIELDS", "20"))
     max_pages: int = int(os.getenv("IES_MAX_PAGES", "20"))
     max_file_bytes: int = int(os.getenv("IES_MAX_FILE_BYTES", str(20 * 1024 * 1024)))
     embedded_text_min_chars: int = int(os.getenv("IES_EMBEDDED_TEXT_MIN_CHARS", "120"))
     demo_fallback: bool = _bool("IES_AI_DEMO_FALLBACK", True)
+    paddle_required: bool = _bool("IES_PADDLEOCR_REQUIRED", True)
     paddle_language: str = os.getenv("PADDLEOCR_LANG", "en")
     paddle_enable_mkldnn: bool = _bool("PADDLEOCR_ENABLE_MKLDNN", True)
     paddle_detection_model: str = os.getenv("PADDLEOCR_DETECTION_MODEL", "PP-OCRv5_mobile_det")

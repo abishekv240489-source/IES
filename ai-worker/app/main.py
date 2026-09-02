@@ -8,9 +8,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
+from .confidence import MAPPING_WEIGHT, METHOD, OCR_WEIGHT, fuse_invoice_confidence
 from .config import settings
-from .mapper import confidence, map_invoice
-from .models import ExtractionResponse
+from .mapper import map_invoice
+from .models import ConfidenceBreakdown, ExtractionResponse
 from .ocr import extract_document
 
 logger = logging.getLogger("ies.ai-worker")
@@ -20,8 +21,13 @@ REQUIRED_FILE = File(...)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "UP", "mapping_provider": settings.mapping_provider}
+def health() -> dict[str, str | bool]:
+    return {
+        "status": "UP",
+        "mapping_provider": settings.mapping_provider,
+        "ocr_engine": "paddleocr",
+        "paddle_required": settings.paddle_required,
+    }
 
 
 @app.post("/v1/extract", response_model=ExtractionResponse)
@@ -52,14 +58,22 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
             logger.exception("Extraction failed document_id=%s sha256_prefix=%s", document_id, digest.hexdigest()[:12])
             raise HTTPException(status_code=502, detail="Extraction pipeline failed") from error
 
-    ocr_score = sum(page.confidence for page in pages) / len(pages) if pages else 0
+    confidence = fuse_invoice_confidence(invoice, pages)
     elapsed_ms = round((time.perf_counter() - started) * 1000)
     return ExtractionResponse(
         document_id=document_id,
         invoice=invoice,
-        overall_confidence=confidence(invoice, ocr_score),
+        overall_confidence=confidence.overall,
         engine=f"{ocr_engine}+{mapping_engine}",
         ocr_pages=len(pages),
         processing_ms=elapsed_ms,
+        confidence_breakdown=ConfidenceBreakdown(
+            method=METHOD,
+            mapping_weight=MAPPING_WEIGHT,
+            ocr_weight=OCR_WEIGHT,
+            mapping_confidence=confidence.mapping,
+            ocr_confidence=confidence.ocr,
+            populated_fields=confidence.populated_fields,
+        ),
         warnings=ocr_warnings + mapping_warnings,
     )

@@ -22,8 +22,13 @@
 2. It validates filename, extension, content type, magic bytes, size and duplicate hash.
 3. A job and audit event are committed before processing begins.
 4. The AI worker uses embedded PDF text when sufficiently complete; otherwise it renders and preprocesses pages for OCR.
-5. PaddleOCR returns text, regions and OCR confidence.
-6. Qwen maps text to a versioned JSON schema. Temperature is zero and JSON is validated before acceptance.
+5. Digital PDFs use their native text layer when it is sufficiently complete; scanned PDFs and image
+   invoices must pass through PaddleOCR. `IES_PADDLEOCR_REQUIRED=true` prevents a silent empty-text OCR
+   fallback. PaddleOCR returns text and page-level OCR confidence.
+6. A deterministic evidence mapper handles complete labelled invoices. Ambiguous or incomplete mappings are
+   sent to Qwen 2.5 7B at temperature zero and validated against the versioned JSON schema; deterministic
+   evidence may fill missing Qwen fields but never overwrite a populated Qwen value. Set
+   `IES_MAPPING_PROVIDER=ollama` to require Qwen for every invoice, or `hybrid` for the latency-aware path.
 7. The Node processor applies authoritative rules: mandatory fields, amount reconciliation, currency/date sanity, confidence thresholds and bank/PO checks.
 8. The UI presents source and extracted values side-by-side. Corrections are audited and become evaluation labels only after approval.
 
@@ -42,6 +47,12 @@
 ## Accuracy model
 
 Accuracy is calculated at field level on a frozen, labelled holdout set. Required-field exact/normalized match, line-item F1 and full-document success are reported separately. Confidence is a routing signal, not a substitute for measured accuracy.
+
+Each populated extracted field receives a page-aware confidence score using a weighted harmonic mean:
+60% Qwen/mapping confidence and 40% PaddleOCR confidence from the evidence page (or the document mean
+when the page is unknown). The conservative harmonic mean prevents a strong component from hiding a weak
+one. The API response and audit event retain the method, weights, component averages and populated-field
+count. Human-reviewed fields keep their reviewer-assigned confidence.
 
 ## Security model
 

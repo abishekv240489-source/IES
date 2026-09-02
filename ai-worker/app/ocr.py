@@ -25,7 +25,7 @@ def extract_document(path: Path) -> tuple[list[OcrPage], str, list[str]]:
         pages = [_paddle_page(image, index + 1) for index, image in enumerate(images)]
         return pages, "paddleocr", warnings
     except (ImportError, RuntimeError) as exc:
-        if not settings.demo_fallback:
+        if settings.paddle_required or not settings.demo_fallback:
             raise
         warnings.append(f"OCR engine unavailable; demo text fallback used ({type(exc).__name__})")
         pages = [OcrPage(page=i + 1, text="", confidence=0, quality_score=0, used_preprocessing=False) for i in range(len(images))]

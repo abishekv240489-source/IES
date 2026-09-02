@@ -88,6 +88,15 @@ class OcrPage(BaseModel):
     used_preprocessing: bool
 
 
+class ConfidenceBreakdown(BaseModel):
+    method: str
+    mapping_weight: float = Field(ge=0, le=1)
+    ocr_weight: float = Field(ge=0, le=1)
+    mapping_confidence: float = Field(ge=0, le=1)
+    ocr_confidence: float = Field(ge=0, le=1)
+    populated_fields: int = Field(ge=0)
+
+
 class ExtractionResponse(BaseModel):
     document_id: str
     invoice: Invoice
@@ -96,4 +105,5 @@ class ExtractionResponse(BaseModel):
     schema_version: str = "1.0"
     ocr_pages: int
     processing_ms: int
+    confidence_breakdown: ConfidenceBreakdown
     warnings: list[str] = []

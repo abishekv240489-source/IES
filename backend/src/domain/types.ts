@@ -39,5 +39,13 @@ export interface AiExtractionResponse {
   engine: string
   ocr_pages: number
   processing_ms: number
+  confidence_breakdown: {
+    method: string
+    mapping_weight: number
+    ocr_weight: number
+    mapping_confidence: number
+    ocr_confidence: number
+    populated_fields: number
+  }
   warnings: string[]
 }

@@ -7,26 +7,74 @@ from time import strptime
 from typing import Any
 
 import httpx
+from pydantic import BaseModel
 
 from .config import settings
 from .models import ExtractedField, Invoice, LineItem
 
 SYSTEM_PROMPT = """You extract supplier invoice data. Return only JSON matching the supplied schema.
-Never invent values. Use null when absent. Each leaf is {"value":...,"confidence":0..1,"source":"qwen","page":null}.
+Never invent values. Use null when absent. Each leaf is {"value":...,"confidence":0..1,"source":"qwen","page":1}.
+Set page to the 1-based PAGE marker containing the evidence, or null only when it cannot be identified.
 Dates use YYYY-MM-DD, currency uses ISO 4217, amounts are numbers. Preserve account identifiers as strings.
 The root keys are header, vendor, billTo, vessel, amounts, bankDetails, lineItems, notes."""
 
 
 def map_invoice(text: str) -> tuple[Invoice, str, list[str]]:
     warnings: list[str] = []
-    if settings.mapping_provider == "ollama" and text.strip():
+    deterministic = heuristic_map(text)
+    if settings.mapping_provider == "hybrid" and _ready_for_fast_path(deterministic):
+        return deterministic, "evidence-mapper", warnings
+    if settings.mapping_provider in {"hybrid", "ollama"} and text.strip():
         try:
-            return _qwen(text), f"qwen:{settings.ollama_model}", warnings
+            mapped = _fill_missing(_qwen(text), deterministic)
+            return mapped, f"qwen:{settings.ollama_model}+evidence-merge", warnings
         except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
             if not settings.demo_fallback:
                 raise
             warnings.append(f"Qwen unavailable or invalid; heuristic fallback used ({type(exc).__name__})")
-    return heuristic_map(text), "heuristic", warnings
+    return deterministic, "heuristic", warnings
+
+
+def _ready_for_fast_path(invoice: Invoice) -> bool:
+    required = (
+        invoice.header.invoiceNumber,
+        invoice.header.invoiceDate,
+        invoice.header.currency,
+        invoice.vendor.name,
+        invoice.amounts.total,
+    )
+    return (
+        all(field.value not in (None, "") for field in required)
+        and bool(invoice.lineItems)
+        and _populated_fields(invoice) >= settings.hybrid_min_populated_fields
+    )
+
+
+def _populated_fields(value: Any) -> int:
+    if isinstance(value, ExtractedField):
+        return int(value.value not in (None, ""))
+    if isinstance(value, BaseModel):
+        return sum(_populated_fields(getattr(value, name)) for name in type(value).model_fields)
+    if isinstance(value, list):
+        return sum(_populated_fields(item) for item in value)
+    return 0
+
+
+def _fill_missing(primary: Invoice, fallback: Invoice) -> Invoice:
+    def merge(target: Any, evidence: Any) -> Any:
+        if isinstance(target, ExtractedField) and isinstance(evidence, ExtractedField):
+            if target.value in (None, "") and evidence.value not in (None, ""):
+                return evidence.model_copy(deep=True)
+            return target
+        if isinstance(target, BaseModel) and isinstance(evidence, BaseModel):
+            for name in type(target).model_fields:
+                setattr(target, name, merge(getattr(target, name), getattr(evidence, name)))
+            return target
+        if isinstance(target, list) and isinstance(evidence, list) and not target:
+            return [item.model_copy(deep=True) if isinstance(item, BaseModel) else item for item in evidence]
+        return target
+
+    return merge(primary, fallback)
 
 
 def _qwen(text: str) -> Invoice:
@@ -267,22 +315,3 @@ def _date(text: str, patterns: list[str]) -> ExtractedField:
     field.value = candidate
     field.confidence = 0.35
     return field
-
-
-def confidence(invoice: Invoice, ocr_confidence: float) -> float:
-    values: list[float] = []
-
-    def walk(value: Any) -> None:
-        if isinstance(value, dict):
-            if "value" in value and "confidence" in value and value["value"] not in (None, ""):
-                values.append(float(value["confidence"]))
-            else:
-                for nested in value.values():
-                    walk(nested)
-        elif isinstance(value, list):
-            for nested in value:
-                walk(nested)
-
-    walk(invoice.model_dump())
-    field_score = sum(values) / len(values) if values else 0
-    return round(0.75 * field_score + 0.25 * ocr_confidence, 4)

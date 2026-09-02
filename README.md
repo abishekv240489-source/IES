@@ -77,7 +77,7 @@ The requirements `>=95% field accuracy`, `>=200 invoices/hour`, and `<15s latenc
 
 The repository includes a deterministic synthetic invoice generator, degraded-scan variants, an API benchmark runner, strict missing-document penalties, line-item metrics and quality/layout breakdowns. See [docs/BENCHMARKING.md](docs/BENCHMARKING.md). Synthetic results are regression evidence only and are never presented as production accuracy.
 
-The current Node/PaddleOCR synthetic regression passes all configured gates at 98.48% scalar-field accuracy, 100% critical-field accuracy, 98.11% line-item F1, 1,357 invoices/hour and 12.324s p95 latency after model warm-up. See [the Node v2 baseline](docs/baselines/SYNTHETIC_NODE_V2_BASELINE.md) for scope and limitations.
+The current Node/PaddleOCR synthetic regression with page-aware confidence fusion passes all configured gates at 98.86% scalar-field accuracy, 100% critical-field accuracy, 96.30% line-item F1, 905.7 invoices/hour and 12.271s p95 latency after model warm-up. See [the confidence-fusion baseline](docs/baselines/SYNTHETIC_CONFIDENCE_V3_BASELINE.md) for scope and limitations.
 
 ## Confidential GitHub workflow
 

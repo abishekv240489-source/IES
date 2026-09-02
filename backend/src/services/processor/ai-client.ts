@@ -12,6 +12,14 @@ const responseSchema = z.object({
   engine: z.string().min(1),
   ocr_pages: z.number().int().nonnegative(),
   processing_ms: z.number().nonnegative(),
+  confidence_breakdown: z.object({
+    method: z.string().min(1),
+    mapping_weight: z.number().min(0).max(1),
+    ocr_weight: z.number().min(0).max(1),
+    mapping_confidence: z.number().min(0).max(1),
+    ocr_confidence: z.number().min(0).max(1),
+    populated_fields: z.number().int().nonnegative(),
+  }),
   warnings: z.array(z.string()),
 })
 
