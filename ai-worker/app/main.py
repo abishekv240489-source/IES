@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import tempfile
@@ -18,6 +19,14 @@ logger = logging.getLogger("ies.ai-worker")
 app = FastAPI(title="IES AI Worker", version="0.1.0", docs_url="/docs")
 REQUIRED_FORM = Form(...)
 REQUIRED_FILE = File(...)
+PIPELINE_SEMAPHORE = asyncio.Semaphore(1)
+
+
+def _run_pipeline(target: Path):
+    pages, ocr_engine, ocr_warnings = extract_document(target)
+    text = "\n\n".join(f"--- PAGE {page.page} ---\n{page.text}" for page in pages)
+    invoice, mapping_engine, mapping_warnings = map_invoice(text)
+    return pages, ocr_engine, ocr_warnings, invoice, mapping_engine, mapping_warnings
 
 
 @app.get("/health")
@@ -49,9 +58,18 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
                 digest.update(chunk)
                 output.write(chunk)
         try:
-            pages, ocr_engine, ocr_warnings = extract_document(target)
-            text = "\n\n".join(f"--- PAGE {page.page} ---\n{page.text}" for page in pages)
-            invoice, mapping_engine, mapping_warnings = map_invoice(text)
+            # PaddleOCR is CPU-heavy and its native runtime is not safe to share
+            # concurrently. Keep one pipeline active without blocking FastAPI's
+            # event loop, so health and status requests remain responsive.
+            async with PIPELINE_SEMAPHORE:
+                (
+                    pages,
+                    ocr_engine,
+                    ocr_warnings,
+                    invoice,
+                    mapping_engine,
+                    mapping_warnings,
+                ) = await asyncio.to_thread(_run_pipeline, target)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except Exception as error:
