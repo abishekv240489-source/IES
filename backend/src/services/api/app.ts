@@ -4,10 +4,11 @@ import { stat } from 'node:fs/promises'
 
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import { collectDefaultMetrics, Counter, Registry } from 'prom-client'
 import { z } from 'zod'
 
+import { createBatchAuditArchive, createInvoiceAuditArchive } from '../../audit-package.js'
 import { AuthService } from '../../auth.js'
 import { LOCAL_TENANT_ID, type Config } from '../../config.js'
 import { audit, getJob, JOB_COLUMNS, persistExtraction, type JobResponse } from '../../db/repository.js'
@@ -36,6 +37,20 @@ function publicJob(job: JobResponse) {
 
 function fileCleanup(files: StoredUpload[]) {
   return Promise.all(files.map((file) => removeStored(file.path)))
+}
+
+function encodedDownloadFilename(filename: string): string {
+  return encodeURIComponent(filename).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+}
+
+function sendAuditArchive(reply: FastifyReply, archive: { filename: string; stream: NodeJS.ReadableStream }) {
+  reply.header('content-type', 'application/zip')
+  reply.header('content-disposition', `attachment; filename*=UTF-8''${encodedDownloadFilename(archive.filename)}`)
+  reply.header('cache-control', 'private, no-store')
+  reply.header('content-security-policy', "default-src 'none'; sandbox")
+  return reply.send(archive.stream)
 }
 
 export async function buildApi(config: Config, database: Database): Promise<FastifyInstance> {
@@ -210,9 +225,7 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
       throw error
     }
 
-    const encodedFilename = encodeURIComponent(source.filename).replace(/[!'()*]/g, (character) =>
-      `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-    )
+    const encodedFilename = encodedDownloadFilename(source.filename)
     reply.header('content-type', invoiceContentType(source.filename))
     reply.header('content-length', fileSize)
     reply.header('content-disposition', `inline; filename*=UTF-8''${encodedFilename}`)
@@ -220,6 +233,42 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
     reply.header('x-frame-options', 'SAMEORIGIN')
     reply.header('content-security-policy', "frame-ancestors 'self'")
     return reply.send(createReadStream(path))
+  })
+
+  app.get('/api/v1/invoices/:id/audit', async (request, reply) => {
+    const actor = await auth.actor(request.headers.authorization)
+    const jobId = uuidSchema.parse((request.params as { id: string }).id)
+    const result = await database.query<{ batchId: string }>(
+      'SELECT batch_id AS "batchId" FROM invoice_jobs WHERE tenant_id = $1 AND id = $2',
+      [LOCAL_TENANT_ID, jobId],
+    )
+    if (!result.rows[0]) throw new ApiError(404, 'Invoice not found', 'NOT_FOUND')
+    await transaction(database, (client) => audit(client, {
+      tenantId: LOCAL_TENANT_ID,
+      jobId,
+      batchId: result.rows[0]!.batchId,
+      action: 'AUDIT_PACKAGE_REQUESTED',
+      actor,
+      detail: 'Invoice audit package requested for download',
+    }))
+    const archive = await createInvoiceAuditArchive(config, database, LOCAL_TENANT_ID, jobId)
+    return sendAuditArchive(reply, archive)
+  })
+
+  app.get('/api/v1/batches/:id/audit', async (request, reply) => {
+    const actor = await auth.actor(request.headers.authorization)
+    const batchId = uuidSchema.parse((request.params as { id: string }).id)
+    const exists = await database.query<{ exists: number }>('SELECT 1 AS exists FROM invoice_batches WHERE tenant_id = $1 AND id = $2', [LOCAL_TENANT_ID, batchId])
+    if (!exists.rows[0]) throw new ApiError(404, 'Invoice batch not found', 'NOT_FOUND')
+    await transaction(database, (client) => audit(client, {
+      tenantId: LOCAL_TENANT_ID,
+      batchId,
+      action: 'BATCH_AUDIT_PACKAGE_REQUESTED',
+      actor,
+      detail: 'Batch audit package requested for download',
+    }))
+    const archive = await createBatchAuditArchive(config, database, LOCAL_TENANT_ID, batchId)
+    return sendAuditArchive(reply, archive)
   })
 
   app.get('/api/v1/invoices/:id/events', async (request) => {

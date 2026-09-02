@@ -3,6 +3,7 @@ import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import CheckRounded from '@mui/icons-material/CheckRounded'
 import CloseRounded from '@mui/icons-material/CloseRounded'
 import DescriptionRounded from '@mui/icons-material/DescriptionRounded'
+import DownloadRounded from '@mui/icons-material/DownloadRounded'
 import HistoryRounded from '@mui/icons-material/HistoryRounded'
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded'
 import SearchRounded from '@mui/icons-material/SearchRounded'
@@ -11,7 +12,7 @@ import VisibilityRounded from '@mui/icons-material/VisibilityRounded'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid2, InputAdornment, InputLabel, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getEvents, getInvoice, getInvoiceSourceUrl, reviewInvoice } from '../api'
+import { getBatchAuditUrl, getEvents, getInvoice, getInvoiceAuditUrl, getInvoiceSourceUrl, reviewInvoice } from '../api'
 import { StatusChip } from '../components/StatusChip'
 import type { ExtractedField } from '../types'
 
@@ -134,9 +135,24 @@ export function ReviewPage() {
   const job = query.data
   const inProgress = ['QUEUED','PREPROCESSING','OCR_RUNNING','MAPPING','VALIDATING'].includes(job.status)
   const sourceUrl = getInvoiceSourceUrl(id)
+  const invoiceAuditUrl = getInvoiceAuditUrl(id)
+  const batchAuditUrl = getBatchAuditUrl(job.batchId)
 
   return <Stack spacing={2.5}>
-    <Box><Button component={Link} to="/invoices" startIcon={<ArrowBackRounded />} color="inherit">Back to invoices</Button><Box className="page-heading" mt={1}><Box minWidth={0}><Stack direction="row" alignItems="center" spacing={1.5}><Typography variant="h1" noWrap>{job.filename}</Typography><StatusChip status={job.status}/></Stack><Typography color="text.secondary" mt={.6}>Job {job.id} · {job.engine || 'Awaiting extraction worker'}</Typography></Box>{!sourceVisible && <Button variant="outlined" startIcon={<VisibilityRounded />} onClick={() => setSourceVisible(true)}>Show source invoice</Button>}</Box></Box>
+    <Box>
+      <Button component={Link} to="/invoices" startIcon={<ArrowBackRounded />} color="inherit">Back to invoices</Button>
+      <Box className="page-heading" mt={1}>
+        <Box minWidth={0}>
+          <Stack direction="row" alignItems="center" spacing={1.5}><Typography variant="h1" noWrap>{job.filename}</Typography><StatusChip status={job.status}/></Stack>
+          <Typography color="text.secondary" mt={.6}>Job {job.id} · {job.engine || 'Awaiting extraction worker'}</Typography>
+        </Box>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          {!sourceVisible && <Button variant="outlined" startIcon={<VisibilityRounded />} onClick={() => setSourceVisible(true)}>Show source</Button>}
+          <Button component="a" href={invoiceAuditUrl} variant="outlined" startIcon={<DownloadRounded />}>Invoice audit</Button>
+          <Button component="a" href={batchAuditUrl} variant="contained" startIcon={<DownloadRounded />}>Batch audit</Button>
+        </Stack>
+      </Box>
+    </Box>
     {inProgress && <Alert severity="info">Processing is active. This page refreshes automatically.</Alert>}
     {job.error && <Alert severity="error">{job.error}</Alert>}
 

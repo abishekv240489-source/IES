@@ -54,6 +54,8 @@ const database = new PGlitePoolAdapter(postgres) as unknown as Database
 let storageRoot: string
 let api: Awaited<ReturnType<typeof buildApi>>
 let processor: InvoiceProcessor
+let processedJobId: string
+let processedBatchId: string
 
 beforeAll(async () => {
   storageRoot = await mkdtemp(resolve(tmpdir(), 'ies-node-test-'))
@@ -114,7 +116,10 @@ describe('Node microservice pipeline', () => {
       payload: upload.body,
     })
     expect(response.statusCode).toBe(202)
-    const jobId = response.json().jobs[0].id as string
+    const payload = response.json()
+    const jobId = payload.jobs[0].id as string
+    processedJobId = jobId
+    processedBatchId = payload.batchId as string
 
     const job = await eventually(
       async () => (await api.inject({ method: 'GET', url: `/api/v1/invoices/${jobId}` })).json(),
@@ -153,5 +158,33 @@ describe('Node microservice pipeline', () => {
     expect(Number(sopAudit.rows[0]?.count)).toBeGreaterThan(0)
     const tasks = await postgres.query<{ state: string }>('SELECT state FROM processing_tasks')
     expect(tasks.rows[0]?.state).toBe('COMPLETED')
+  })
+
+  it('downloads a review-ready audit package for one invoice', async () => {
+    const response = await api.inject({ method: 'GET', url: `/api/v1/invoices/${processedJobId}/audit` })
+    expect(response.statusCode).toBe(200)
+    expect(response.headers['content-type']).toContain('application/zip')
+    expect(response.headers['content-disposition']).toContain('-audit.zip')
+    expect(response.headers['cache-control']).toBe('private, no-store')
+    expect(response.rawPayload.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+    const archive = response.rawPayload.toString('utf8')
+    expect(archive).toContain('source/invoice.pdf')
+    expect(archive).toContain('extracted-fields.json')
+    expect(archive).toContain('extracted-fields.csv')
+    expect(archive).toContain('review-template.json')
+    expect(archive).toContain('TEST-100')
+    expect(archive).toContain('%PDF-1.4')
+    expect(archive).toContain('AUDIT_PACKAGE_REQUESTED')
+  })
+
+  it('downloads a batch audit package with an invoice folder', async () => {
+    const response = await api.inject({ method: 'GET', url: `/api/v1/batches/${processedBatchId}/audit` })
+    expect(response.statusCode).toBe(200)
+    expect(response.headers['content-type']).toContain('application/zip')
+    expect(response.headers['content-disposition']).toContain(`batch-${processedBatchId}-audit.zip`)
+    const archive = response.rawPayload.toString('utf8')
+    expect(archive).toContain(`invoices/001-${processedJobId}/source/invoice.pdf`)
+    expect(archive).toContain('batch-audit-events.json')
+    expect(archive).toContain('BATCH_AUDIT_PACKAGE_REQUESTED')
   })
 })

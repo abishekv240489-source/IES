@@ -31,6 +31,7 @@
    `IES_MAPPING_PROVIDER=ollama` to require Qwen for every invoice, or `hybrid` for the latency-aware path.
 7. The Node processor applies authoritative rules: mandatory fields, amount reconciliation, currency/date sanity, confidence thresholds and bank/PO checks.
 8. The UI presents source and extracted values side-by-side. Corrections are audited and become evaluation labels only after approval.
+9. An authorized reviewer can stream an invoice or complete batch audit ZIP. Packages preserve the original source and exact extraction, confidence/evidence, validation, revision and event records, plus a structured correction template for accuracy analysis.
 
 ## Performance model
 
@@ -62,3 +63,4 @@ count. Human-reviewed fields keep their reviewer-assigned confidence.
 - Application secrets come from environment variables or an external secret manager.
 - Logs use identifiers and timings, not OCR text or bank-account values.
 - Every state transition and reviewer correction emits an append-only audit event.
+- Audit downloads are tenant-scoped, recorded as events, marked private/no-store and streamed without persisting duplicate audit artifacts.

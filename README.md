@@ -12,6 +12,7 @@ Cloud-agnostic invoice ingestion, OCR, structured extraction, validation, and hu
 - Structured header, vendor, bill-to, vessel, amount, bank and line-item fields
 - Deterministic validation, confidence flags and reviewer corrections
 - React/MUI operational dashboard and invoice review cockpit
+- Downloadable per-invoice and per-batch audit ZIPs with source files, field JSON/CSV, confidence evidence, revisions, validation, events and review templates
 - Versioned PostgreSQL schema with normalized extraction, audit, benchmark and durable task tables
 - Accuracy, latency and throughput benchmark harnesses (targets are measured, never assumed)
 
@@ -66,6 +67,12 @@ Prerequisites: PostgreSQL 15+, Node 22+ with pnpm 11, and Python 3.11+.
 4. Start the UI from `frontend`: `pnpm install --frozen-lockfile && pnpm run dev`.
 
 Every runtime uses PostgreSQL; there is no H2-only schema. Local and container demos default to authentication-off, while production deployment must enable OIDC/JWT.
+
+## Extraction audit packages
+
+Open any invoice review page and select **Invoice audit** or **Batch audit**. The API streams a private ZIP without creating a second persistent copy. Invoice packages are available from `GET /api/v1/invoices/:id/audit`; batch packages are available from `GET /api/v1/batches/:id/audit`.
+
+Each invoice contains its original source, exact extracted-fields JSON, spreadsheet-safe CSV, validation result, extraction revision history, complete audit events and an editable `review-template.json`. Mark reviewed fields as `CORRECT`, `INCORRECT` or `NOT_APPLICABLE`, add corrected values where needed, and return the package for field-level error analysis. Audit ZIPs can contain confidential supplier and invoice data and remain excluded from Git.
 
 ## Kubernetes
 
