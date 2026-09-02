@@ -19,9 +19,9 @@
 ## Processing flow
 
 1. The API streams an upload to a generated document path while calculating SHA-256.
-2. It validates filename, extension, content type, magic bytes, size and duplicate hash.
+2. It validates filename, extension, content type, magic bytes, size and duplicate hash. Duplicate content is labelled for traceability but remains a distinct job in the requested batch.
 3. A job and audit event are committed before processing begins.
-4. The AI worker uses embedded PDF text when sufficiently complete; otherwise it renders and preprocesses pages for OCR.
+4. The AI worker uses embedded PDF text page-by-page when sufficiently complete and sends sparse or image-only pages through rendering, preprocessing and PaddleOCR, including mixed PDFs.
 5. Digital PDFs use their native text layer when it is sufficiently complete; scanned PDFs and image
    invoices must pass through PaddleOCR. `IES_PADDLEOCR_REQUIRED=true` prevents a silent empty-text OCR
    fallback. PaddleOCR returns text and page-level OCR confidence.
@@ -31,7 +31,7 @@
    `IES_MAPPING_PROVIDER=ollama` to require Qwen for every invoice, or `hybrid` for the latency-aware path.
 7. The Node processor applies authoritative rules: mandatory fields, amount reconciliation, currency/date sanity, confidence thresholds and bank/PO checks.
 8. The UI presents source and extracted values side-by-side. Corrections are audited and become evaluation labels only after approval.
-9. An authorized reviewer can stream an invoice or complete batch audit ZIP. Packages preserve the original source and exact extraction, confidence/evidence, validation, revision and event records, plus a structured correction template for accuracy analysis.
+9. An authorized reviewer can stream an invoice or complete batch audit ZIP. Packages preserve the original source, exact extraction, page-level OCR text/confidence evidence, validation, revision and event records, plus a structured correction template for accuracy analysis.
 
 ## Performance model
 
@@ -53,7 +53,9 @@ Each populated extracted field receives a page-aware confidence score using a we
 60% Qwen/mapping confidence and 40% PaddleOCR confidence from the evidence page (or the document mean
 when the page is unknown). The conservative harmonic mean prevents a strong component from hiding a weak
 one. The API response and audit event retain the method, weights, component averages and populated-field
-count. Human-reviewed fields keep their reviewer-assigned confidence.
+count. Document confidence is capped by the fused confidence of the five required fields, so strong OCR on
+optional populated fields cannot conceal a missing vendor, invoice number/date, currency or total.
+Human-reviewed fields keep their reviewer-assigned confidence.
 
 ## Security model
 
@@ -63,4 +65,4 @@ count. Human-reviewed fields keep their reviewer-assigned confidence.
 - Application secrets come from environment variables or an external secret manager.
 - Logs use identifiers and timings, not OCR text or bank-account values.
 - Every state transition and reviewer correction emits an append-only audit event.
-- Audit downloads are tenant-scoped, recorded as events, marked private/no-store and streamed without persisting duplicate audit artifacts.
+- Audit downloads are tenant-scoped, available only after processing finishes, recorded as events, marked private/no-store and streamed without persisting duplicate audit artifacts.

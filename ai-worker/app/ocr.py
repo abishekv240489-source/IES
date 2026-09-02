@@ -15,20 +15,27 @@ def extract_document(path: Path) -> tuple[list[OcrPage], str, list[str]]:
     warnings: list[str] = []
     if path.suffix.lower() == ".pdf":
         embedded = _embedded_pdf_text(path)
-        if sum(len(page.text.strip()) for page in embedded) >= settings.embedded_text_min_chars:
+        sparse_pages = [page.page for page in embedded if len(page.text.strip()) < settings.embedded_text_min_chars]
+        if not sparse_pages:
             return embedded, "embedded-text", warnings
-        images = _pdf_images(path)
+        images = _pdf_images(path, sparse_pages)
     else:
-        images = [_load_image(path)]
+        embedded = []
+        sparse_pages = [1]
+        images = [(1, _load_image(path))]
 
     try:
-        pages = [_paddle_page(image, index + 1) for index, image in enumerate(images)]
-        return pages, "paddleocr", warnings
+        ocr_pages = {page_number: _paddle_page(image, page_number) for page_number, image in images}
+        if embedded and len(sparse_pages) < len(embedded):
+            pages = [ocr_pages.get(page.page, page) for page in embedded]
+            return pages, "embedded-text+paddleocr", warnings
+        return [ocr_pages[page_number] for page_number in sparse_pages], "paddleocr", warnings
     except (ImportError, RuntimeError) as exc:
         if settings.paddle_required or not settings.demo_fallback:
             raise
         warnings.append(f"OCR engine unavailable; demo text fallback used ({type(exc).__name__})")
-        pages = [OcrPage(page=i + 1, text="", confidence=0, quality_score=0, used_preprocessing=False) for i in range(len(images))]
+        pages = [OcrPage(page=page_number, text="", confidence=0, quality_score=0, used_preprocessing=False)
+                 for page_number in sparse_pages]
         return pages, "ocr-demo-fallback", warnings
 
 
@@ -45,14 +52,18 @@ def _embedded_pdf_text(path: Path) -> list[OcrPage]:
     return pages
 
 
-def _pdf_images(path: Path) -> list[np.ndarray]:
-    images: list[np.ndarray] = []
+def _pdf_images(path: Path, page_numbers: list[int] | None = None) -> list[tuple[int, np.ndarray]]:
+    images: list[tuple[int, np.ndarray]] = []
+    selected = set(page_numbers) if page_numbers is not None else None
     with fitz.open(path) as document:
         if document.page_count > settings.max_pages:
             raise ValueError(f"Document exceeds {settings.max_pages} pages")
-        for page in document:
+        for index, page in enumerate(document, start=1):
+            if selected is not None and index not in selected:
+                continue
             pix = page.get_pixmap(matrix=fitz.Matrix(2.2, 2.2), alpha=False)
-            images.append(np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n))
+            image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+            images.append((index, image))
     return images
 
 

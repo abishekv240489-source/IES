@@ -134,6 +134,7 @@ export function ReviewPage() {
   if (!query.data) return <Alert severity="error">Invoice not found.</Alert>
   const job = query.data
   const inProgress = ['QUEUED','PREPROCESSING','OCR_RUNNING','MAPPING','VALIDATING'].includes(job.status)
+  const batchAuditReady = ['COMPLETED', 'COMPLETED_WITH_ERRORS'].includes(job.batchStatus)
   const sourceUrl = getInvoiceSourceUrl(id)
   const invoiceAuditUrl = getInvoiceAuditUrl(id)
   const batchAuditUrl = getBatchAuditUrl(job.batchId)
@@ -148,8 +149,10 @@ export function ReviewPage() {
         </Box>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           {!sourceVisible && <Button variant="outlined" startIcon={<VisibilityRounded />} onClick={() => setSourceVisible(true)}>Show source</Button>}
-          <Button component="a" href={invoiceAuditUrl} variant="outlined" startIcon={<DownloadRounded />}>Invoice audit</Button>
-          <Button component="a" href={batchAuditUrl} variant="contained" startIcon={<DownloadRounded />}>Batch audit</Button>
+          <Button component="a" href={invoiceAuditUrl} disabled={inProgress} variant="outlined" startIcon={<DownloadRounded />}>Invoice audit</Button>
+          <Tooltip title={batchAuditReady ? 'Download all invoices in this completed batch' : 'Available after every invoice in the batch finishes'}>
+            <span><Button component="a" href={batchAuditUrl} disabled={!batchAuditReady} variant="contained" startIcon={<DownloadRounded />}>Batch audit</Button></span>
+          </Tooltip>
         </Stack>
       </Box>
     </Box>

@@ -26,6 +26,7 @@ interface InvoiceAuditRow extends QueryResultRow {
   engine: string | null
   extraction: Record<string, unknown> | null
   validation: unknown
+  ocrEvidence: unknown
   errorCode: string | null
   error: string | null
   createdAt: Date
@@ -93,6 +94,7 @@ const INVOICE_COLUMNS = `
   extraction_engine AS engine,
   extraction_json AS extraction,
   validation_json AS validation,
+  ocr_evidence_json AS "ocrEvidence",
   error_code AS "errorCode",
   error_message AS error,
   created_at AS "createdAt",
@@ -206,6 +208,7 @@ function invoiceManifest(job: InvoiceAuditRow, generatedAt: Date, prefix: string
       extractedFieldsJson: `${prefix}extracted-fields.json`,
       extractedFieldsCsv: `${prefix}extracted-fields.csv`,
       validation: `${prefix}validation.json`,
+      ocrEvidence: `${prefix}ocr-evidence.json`,
       revisions: `${prefix}extraction-revisions.json`,
       auditTrail: `${prefix}audit-events.json`,
       reviewTemplate: `${prefix}review-template.json`,
@@ -244,13 +247,14 @@ function invoiceEntries(
     { name: `${prefix}extracted-fields.json`, modifiedAt, data: json(job.extraction) },
     { name: `${prefix}extracted-fields.csv`, modifiedAt, data: fieldsCsv(fields) },
     { name: `${prefix}validation.json`, modifiedAt, data: json(job.validation) },
+    { name: `${prefix}ocr-evidence.json`, modifiedAt, data: json(job.ocrEvidence) },
     { name: `${prefix}extraction-revisions.json`, modifiedAt, data: json(revisions) },
     { name: `${prefix}audit-events.json`, modifiedAt: generatedAt, data: json(events) },
     { name: `${prefix}review-template.json`, modifiedAt: generatedAt, data: json(reviewTemplate(job, fields)) },
   ]
 }
 
-const README = `IES extraction audit package\n\nThis private package contains the retained source invoice, the exact extracted fields, confidence/evidence data, validation results, extraction revisions and audit events.\n\nFor structured review, edit review-template.json. Mark each reviewed field CORRECT, INCORRECT or NOT_APPLICABLE; provide correctedValue for incorrect fields. Keep the original source and extracted values unchanged so results can be compared reliably.\n\nTreat this package as confidential because it may contain invoice and supplier information.\n`
+const README = `IES extraction audit package\n\nThis private package contains the retained source invoice, exact extracted fields, page-level OCR text/confidence evidence, validation results, extraction revisions and audit events.\n\nFor structured review, edit review-template.json. Mark each reviewed field CORRECT, INCORRECT or NOT_APPLICABLE; provide correctedValue for incorrect fields. Keep the original source and extracted values unchanged so results can be compared reliably.\n\nTreat this package as confidential because it may contain invoice and supplier information.\n`
 
 async function revisionsForInvoice(database: Database, tenantId: string, jobId: string): Promise<RevisionRow[]> {
   const result = await database.query<RevisionRow>(

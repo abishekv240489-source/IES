@@ -121,7 +121,6 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
       if (files.length > config.IES_MAX_BATCH_SIZE) throw new ApiError(400, 'Batch exceeds configured file limit', 'BATCH_TOO_LARGE')
 
       const batchId = id()
-      const filesToDelete: StoredUpload[] = []
       const jobs = await transaction(database, async (client) => {
         await client.query(
           `INSERT INTO invoice_batches(id, tenant_id, submitted_by, document_count, status)
@@ -137,11 +136,7 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
              ORDER BY created_at DESC LIMIT 1`,
             [LOCAL_TENANT_ID, file.sha256],
           )
-          if (duplicate.rows[0]) {
-            filesToDelete.push(file)
-            items.push({ id: duplicate.rows[0].id, filename: file.originalFilename, status: duplicate.rows[0].status, duplicate: true, message: 'Identical document already exists' })
-            continue
-          }
+          const duplicateOf = duplicate.rows[0]?.id ?? null
           const jobId = id()
           await client.query(
             `INSERT INTO invoice_jobs
@@ -153,18 +148,19 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
             `INSERT INTO processing_tasks(id, tenant_id, job_id) VALUES ($1, $2, $3)`,
             [id(), LOCAL_TENANT_ID, jobId],
           )
-          await audit(client, { tenantId: LOCAL_TENANT_ID, jobId, batchId, action: 'UPLOADED', actor, detail: 'File accepted and queued', metadata: { sha256: file.sha256 } })
-          items.push({ id: jobId, filename: file.originalFilename, status: 'QUEUED', duplicate: false, message: 'Queued' })
+          await audit(client, { tenantId: LOCAL_TENANT_ID, jobId, batchId, action: 'UPLOADED', actor,
+            detail: duplicateOf ? 'Duplicate detected; retained and queued by user request' : 'File accepted and queued',
+            metadata: { sha256: file.sha256, duplicateOf } })
+          items.push({ id: jobId, filename: file.originalFilename, status: 'QUEUED', duplicate: Boolean(duplicateOf),
+            message: duplicateOf ? 'Queued as a new batch item; identical content was processed previously' : 'Queued' })
           queued += 1
         }
         if (!queued) await client.query("UPDATE invoice_batches SET status = 'COMPLETED', completed_at = now() WHERE id = $1", [batchId])
-        await audit(client, { tenantId: LOCAL_TENANT_ID, batchId, action: 'BATCH_SUBMITTED', actor, detail: `${files.length} documents submitted`, metadata: { queued, duplicates: files.length - queued } })
+        const duplicates = items.filter((item) => item.duplicate).length
+        await audit(client, { tenantId: LOCAL_TENANT_ID, batchId, action: 'BATCH_SUBMITTED', actor, detail: `${files.length} documents submitted`, metadata: { queued, duplicates } })
         return items
       })
       databaseCommitted = true
-      await Promise.all(filesToDelete.map((file) => removeStored(file.path).catch((error) => {
-        request.log.warn({ error, storedFilename: file.storedFilename }, 'Could not remove duplicate upload')
-      })))
       return reply.status(202).send({ batchId, jobs })
     } catch (error) {
       if (!databaseCommitted) await fileCleanup(files)
@@ -238,11 +234,14 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
   app.get('/api/v1/invoices/:id/audit', async (request, reply) => {
     const actor = await auth.actor(request.headers.authorization)
     const jobId = uuidSchema.parse((request.params as { id: string }).id)
-    const result = await database.query<{ batchId: string }>(
-      'SELECT batch_id AS "batchId" FROM invoice_jobs WHERE tenant_id = $1 AND id = $2',
+    const result = await database.query<{ batchId: string; status: string }>(
+      'SELECT batch_id AS "batchId", status FROM invoice_jobs WHERE tenant_id = $1 AND id = $2',
       [LOCAL_TENANT_ID, jobId],
     )
     if (!result.rows[0]) throw new ApiError(404, 'Invoice not found', 'NOT_FOUND')
+    if (['QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING'].includes(result.rows[0].status)) {
+      throw new ApiError(409, 'Invoice audit is available after processing reaches a terminal or review state', 'AUDIT_NOT_READY')
+    }
     await transaction(database, (client) => audit(client, {
       tenantId: LOCAL_TENANT_ID,
       jobId,
@@ -260,6 +259,14 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
     const batchId = uuidSchema.parse((request.params as { id: string }).id)
     const exists = await database.query<{ exists: number }>('SELECT 1 AS exists FROM invoice_batches WHERE tenant_id = $1 AND id = $2', [LOCAL_TENANT_ID, batchId])
     if (!exists.rows[0]) throw new ApiError(404, 'Invoice batch not found', 'NOT_FOUND')
+    const active = await database.query<{ count: string }>(
+      `SELECT count(*) AS count FROM invoice_jobs WHERE tenant_id = $1 AND batch_id = $2
+         AND status IN ('QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING')`,
+      [LOCAL_TENANT_ID, batchId],
+    )
+    if (Number(active.rows[0]?.count ?? 0) > 0) {
+      throw new ApiError(409, 'Batch audit is available after every invoice finishes processing', 'AUDIT_NOT_READY')
+    }
     await transaction(database, (client) => audit(client, {
       tenantId: LOCAL_TENANT_ID,
       batchId,

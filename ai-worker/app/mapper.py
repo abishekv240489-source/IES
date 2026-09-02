@@ -101,6 +101,7 @@ def heuristic_map(text: str) -> Invoice:
     invoice.header.invoiceNumber = _find(
         text,
         [
+            r"(?m)^\s*invoice\s*(?:no\.?|number|#)\s*:\s*$\s*(?:company\s*:\s*$\s*)?((?=[A-Z0-9/_-]*\d)[A-Z0-9][A-Z0-9/_-]+)\s*$",
             (
                 r"(?m)^\s*(?:invoice\s*(?:no\.?|number|#)|inv\s*#)\s*[:#-]?\s*"
                 r"((?=[A-Z0-9/_-]*\d)[A-Z0-9][A-Z0-9/_-]+)\s*$"
@@ -111,14 +112,17 @@ def heuristic_map(text: str) -> Invoice:
     )
     invoice.header.poReference = _find(
         text,
-        [(
+        [r"(?m)^\s*customer\s+order\s+reference\s*[:#-]\s*([A-Z0-9][A-Z0-9/_-]+)\s*$", (
             r"(?m)^\s*(?:purchase[ \t]+order|p\.?o\.?(?:[ \t]+no\.?)?)[ \t]*[:#-][ \t]*"
             r"([A-Z0-9][A-Z0-9/_-]+)[ \t]*$"
-        )],
+        ), r"(?m)^\s*((?:PO|KRM|ELN)-[A-Z0-9][A-Z0-9/_-]+)\s*$"],
         0.68,
     )
-    invoice.header.invoiceDate = _date(text, [r"invoice\s*date\s*[:#-]?\s*([^\n]+)", r"date\s*[:#-]?\s*([^\n]+)"])
-    invoice.header.dueDate = _date(text, [r"due\s*date\s*[:#-]?\s*([^\n]+)"])
+    date_value = r"(\d{1,4}(?:[./-]\d{1,2}[./-]\d{1,4}|[ ./-][A-Za-z]{3,9}[ ./-]\d{2,4}))"
+    invoice.header.invoiceDate = _date(
+        text, [rf"invoice\s*date\s*[:#-]?\s*{date_value}", rf"(?m)^\s*date\s*[:#-]?\s*{date_value}"]
+    )
+    invoice.header.dueDate = _date(text, [rf"due\s*date\s*[:#-]?\s*{date_value}"])
     invoice.header.currency = _find(
         text,
         [r"(?:currency|total)\s*[:#-]?\s*(USD|EUR|GBP|SGD|INR|AUD|CAD|JPY|CNY|AED|MYR)\b",
@@ -126,16 +130,22 @@ def heuristic_map(text: str) -> Invoice:
         0.75,
         upper=True,
     )
+    if invoice.header.currency.value is None and re.search(r"(?<!\w)S\$(?!\w)", text):
+        invoice.header.currency = _field("SGD", 0.72)
     invoice.vendor.name = _find(
         text, [r"(?m)^\s*(?:vendor|supplier|from)[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.58
     )
+    if invoice.vendor.name.value is None:
+        company_names = _company_names(text)
+        if company_names:
+            invoice.vendor.name = _field(company_names[0], 0.72)
     invoice.vendor.country = _find(
         text, [r"(?m)^\s*country[ \t]*[:#-][ \t]*([^\n]{2,80})"], 0.68
     )
     invoice.vendor.taxRegistration = _find(
         text,
         [(
-            r"(?m)^\s*(?:vat|gst|tax)[ \t]*(?:registration|reg|id|no\.?|#)[ \t]*"
+            r"(?m)^\s*(?:seller[ \t]+)?(?:vat|gst|tax)[ \t]*(?:registration|reg|id|no\.?|#)[ \t]*"
             r"[:#-][ \t]*([A-Z0-9-]{5,30})"
         )],
         0.65,
@@ -151,36 +161,59 @@ def heuristic_map(text: str) -> Invoice:
         [r"(?m)^\s*accounting[ \t]+(?:reference|ref)[ \t]*[:#-][ \t]*([^\n]{2,80})"],
         0.68,
     )
+    invoice.billTo.entity = _find(
+        text,
+        [r"(?mi)^\s*(?:sold\s+to|bill\s+to)\s*:?[ \t]*\n[ \t]*([^\n]{3,120})"],
+        0.70,
+    )
+    if invoice.billTo.entity.value is None:
+        company_names = _company_names(text)
+        if len(company_names) > 1:
+            invoice.billTo.entity = _field(company_names[1], 0.66)
     invoice.vessel.name = _find(
-        text, [r"(?m)^\s*vessel[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.70
+        text, [r"(?mi)^\s*vessel\s+name[ \t]*:[ \t]*\n(?:[ \t]*delivery\s+no[ \t]*:[ \t]*\n[^\n]+\n)?[ \t]*([^\n]{2,100})",
+               r"(?m)^\s*(?:vessel\s+name|vessel)[ \t]*[:#-][ \t]*([^\n]{2,100})",
+               r"(?mi)^\s*master\s+and\s+owners\s+of\s+(.+?)\s+IMO\s+\d{7}\b"], 0.70
     )
     invoice.vessel.voyage = _find(
         text, [r"(?m)^\s*voyage[ \t]*[:#-][ \t]*([^\n]{2,50})"], 0.70
     )
     invoice.vessel.imo = _find(
-        text, [r"(?m)^\s*imo[ \t]*(?:[:#-][ \t]*)?(\d{7})\b"], 0.72
+        text, [r"(?m)^\s*imo[ \t]*(?:[:#-][ \t]*)?(\d{7})\b", r"(?i)\bIMO\s+(\d{7})\b"], 0.72
     )
     invoice.vessel.port = _find(text, [r"(?m)^\s*port[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.68)
-    invoice.amounts.subtotal = _label_amount(text, r"subtotal")
+    invoice.amounts.subtotal = _label_amount(text, r"sub[ \t]*total")
     invoice.amounts.tax = _label_amount(text, r"(?:tax|vat|gst)(?:[ \t]+amount)?")
-    invoice.amounts.discount = _label_amount(text, r"discount")
+    invoice.amounts.discount = _label_amount(
+        text, r"(?:\d+(?:\.\d+)?%[ \t]+)?(?:disc\.?|discount)(?:[ \t]+S\$)?"
+    )
     invoice.amounts.shipping = _label_amount(text, r"(?:shipping|freight)")
     invoice.amounts.total = _amount(
         text,
         [
-            r"(?m)^\s*(?:grand\s*total|invoice\s*total|total\s*due|amount\s*due|total)\b(?:\s+[A-Z]{3})?\s*[: ]\s*[^\d-]*([\d,.]+)",
+            r"(?m)^\s*(?:grand\s*total|invoice\s*total|total\s*amount|total\s*due|amount\s*due|total)\b(?:\s+[A-Z]{3})?\s*:?\s*(?:\n\s*)?[^\d-]*([\d,.]+)",
             r"(?m)^\s*total\s+[A-Z]{3}\s*$\s*([\d,.]+)",
         ],
         0.72,
     )
     invoice.amounts.exchangeRate = _label_amount(text, r"exchange[ \t]+rate", 0.66)
     invoice.bankDetails.bankName = _find(
-        text, [r"(?m)^\s*bank[ \t]+name[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.55
+        text, [r"(?m)^\s*(?:bank[ \t]+name|name[ \t]+of[ \t]+bank)[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.55
     )
+    if invoice.bankDetails.bankName.value is None:
+        invoice.bankDetails.bankName = _following_label_value(text, [r"bank\s+name", r"name\s+of\s+bank"], 0.68)
     invoice.bankDetails.beneficiary = _find(
-        text, [r"(?m)^\s*beneficiary[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.65
+        text, [r"(?m)^\s*(?:beneficiary|name[ \t]+of[ \t]+account)[ \t]*[:#-][ \t]*([^\n]{2,100})"], 0.65
     )
-    invoice.bankDetails.accountNumber = _find(text, [r"(?:account|a/c)\s*(?:number|no\.?|#)\s*[:#-]?\s*([A-Z0-9 -]{5,40})"], 0.66)
+    if invoice.bankDetails.beneficiary.value is None:
+        invoice.bankDetails.beneficiary = _following_label_value(text, [r"beneficiary", r"name\s+of\s+account"], 0.68)
+    invoice.bankDetails.accountNumber = _find(
+        text, [r"(?:account|a/c)\s*(?:number|no\.?|#)\s*[:#-]?\s*([A-Z0-9/# -]{5,40})"], 0.66
+    )
+    if invoice.bankDetails.accountNumber.value is None:
+        invoice.bankDetails.accountNumber = _following_label_value(
+            text, [r"(?:account|a/c)\s*(?:number|no\.?|#)"], 0.68
+        )
     invoice.bankDetails.iban = _find(text, [r"\bIBAN\s*[:#-]?\s*([A-Z]{2}\d{2}[A-Z0-9 ]{10,32})"], 0.72, upper=True)
     invoice.bankDetails.swiftBic = _find(text, [r"(?:swift|bic)\s*(?:code)?\s*[:#-]?\s*([A-Z0-9]{8,11})"], 0.72, upper=True)
     invoice.notes = _find(
@@ -189,8 +222,33 @@ def heuristic_map(text: str) -> Invoice:
         0.58,
     )
     _map_supplier_and_bill_to_block(invoice, text)
-    invoice.lineItems = _line_items(text)
+    invoice.lineItems = _line_items(text) or _generic_line_items(text)
     return invoice
+
+
+def _company_names(text: str) -> list[str]:
+    pattern = re.compile(
+        r"(?im)^\s*([A-Z][A-Z0-9&.,'() /-]{2,100}?\b(?:PRIVATE\s+LIMITED|PTE\.?\s+LTD\.?|LIMITED|LTD\.?|LLC|INC\.?|CORP(?:ORATION)?\.?))\b"
+    )
+    names: list[str] = []
+    for match in pattern.finditer(text):
+        value = re.sub(r"\s+", " ", match.group(1)).strip(" .")
+        if value.upper() in {name.upper() for name in names}:
+            continue
+        names.append(value)
+    return names
+
+
+def _following_label_value(text: str, labels: list[str], confidence: float) -> ExtractedField:
+    lines = _lines(text)
+    label_pattern = re.compile(rf"(?:{'|'.join(labels)})\s*:?[ \t]*$", re.IGNORECASE)
+    for index, line in enumerate(lines[:-1]):
+        if not label_pattern.fullmatch(line):
+            continue
+        candidate = lines[index + 1].strip()
+        if candidate and not candidate.endswith(":"):
+            return _field(candidate, confidence)
+    return ExtractedField()
 
 
 def _map_supplier_and_bill_to_block(invoice: Invoice, text: str) -> None:
@@ -250,6 +308,99 @@ def _line_items(text: str) -> list[LineItem]:
     return items
 
 
+def _generic_line_items(text: str) -> list[LineItem]:
+    lines = _lines(text)
+    columnar = _columnar_ocr_line_items(lines)
+    if columnar:
+        return columnar
+    # Common service-invoice layout: Description / Currency / Amount followed by one row.
+    try:
+        description_header = next(index for index, line in enumerate(lines) if line.lower() == "description")
+        amount_header = next(index for index in range(description_header + 1, len(lines)) if lines[index].lower() == "amount")
+    except StopIteration:
+        description_header = amount_header = -1
+    if amount_header >= 0 and amount_header + 3 < len(lines):
+        description, currency, amount = lines[amount_header + 1:amount_header + 4]
+        parsed_amount = _number(amount)
+        if len(description) > 3 and re.fullmatch(r"[A-Z]{3}", currency) and parsed_amount is not None:
+            return [LineItem(
+                lineNumber=_field("1", 0.68),
+                description=_field(description, 0.70),
+                amount=_field(parsed_amount, 0.72),
+            )]
+
+    # Common fuel invoice row containing delivery date, description, volume, UoM, price and value.
+    row_pattern = re.compile(
+        r"(?mi)^\s*\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s+(.+?)\s+(?:Bulk\s+)?"
+        r"([\d,]+\.\d{3})\s+([A-Za-z]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+\w+\s*$"
+    )
+    match = row_pattern.search(text)
+    if not match:
+        return []
+    items = [LineItem(
+        lineNumber=_field("1", 0.68),
+        description=_field(match.group(1), 0.70),
+        quantity=_field(_number(match.group(2)), 0.72),
+        unitPrice=_field(_number(match.group(4)), 0.72),
+        amount=_field(_number(match.group(5)), 0.72),
+    )]
+    tail = text[match.end():]
+    adjustment = re.search(r"(?mi)^\s*([A-Za-z][A-Za-z/() -]{3,80})\s+([\d,]+\.\d{2})\s*$", tail)
+    if adjustment and adjustment.group(1).strip().upper() not in {"TOTAL AMOUNT", "NET AMOUNT"}:
+        items.append(LineItem(
+            lineNumber=_field("2", 0.66),
+            description=_field(adjustment.group(1).strip(), 0.68),
+            amount=_field(_number(adjustment.group(2)), 0.70),
+        ))
+    return items
+
+
+def _columnar_ocr_line_items(lines: list[str]) -> list[LineItem]:
+    try:
+        start = next(index for index, line in enumerate(lines) if line.upper() == "PRICE") + 1
+        end = next(index for index in range(start, len(lines)) if re.match(r"(?i)^sub\s*total\b", lines[index]))
+    except StopIteration:
+        return []
+    body = lines[start:end]
+
+    def is_money(value: str) -> bool:
+        return bool(re.fullmatch(r"[\d,]+\.\d{2}", value.strip()))
+
+    items: list[LineItem] = []
+    index = 0
+    while index + 2 < len(body):
+        if not (is_money(body[index]) and is_money(body[index + 1]) and _line_number(body[index + 2])):
+            index += 1
+            continue
+        next_index = index + 3
+        while next_index + 2 < len(body) and not (
+            is_money(body[next_index]) and is_money(body[next_index + 1]) and _line_number(body[next_index + 2])
+        ):
+            next_index += 1
+        detail = body[index + 3:next_index if next_index + 2 < len(body) else len(body)]
+        quantity: float | None = None
+        description_start = 0
+        if detail:
+            combined = re.fullmatch(r"([\d,.]+)\s+PCS", detail[0], re.IGNORECASE)
+            if combined:
+                quantity = _number(combined.group(1))
+                description_start = 1
+            elif _number(detail[0]) is not None and len(detail) > 1 and detail[1].upper() == "PCS":
+                quantity = _number(detail[0])
+                description_start = 2
+        description = " ".join(detail[description_start:]).strip()
+        if description and quantity is not None:
+            items.append(LineItem(
+                lineNumber=_field(body[index + 2], 0.70),
+                description=_field(description, 0.68),
+                quantity=_field(quantity, 0.70),
+                unitPrice=_field(_number(body[index]), 0.70),
+                amount=_field(_number(body[index + 1]), 0.70),
+            ))
+        index = next_index if next_index > index else index + 1
+    return items
+
+
 def _lines(text: str) -> list[str]:
     return [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip() and
             not line.strip().startswith("--- PAGE")]
@@ -304,8 +455,11 @@ def _date(text: str, patterns: list[str]) -> ExtractedField:
     field = _find(text, patterns, 0.64)
     if field.value is None:
         return field
-    candidate = str(field.value).split()[0].strip(".,")
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%d.%m.%Y", "%d-%b-%Y"):
+    candidate = re.sub(r"\s+", " ", str(field.value)).strip(" .,:")
+    for fmt in (
+        "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y", "%m/%d/%Y",
+        "%d.%m.%Y", "%d %b %Y", "%d %B %Y", "%d-%b-%Y", "%d-%b-%y", "%d %b %y",
+    ):
         try:
             parsed = strptime(candidate, fmt)
             field.value = date(parsed.tm_year, parsed.tm_mon, parsed.tm_mday).isoformat()

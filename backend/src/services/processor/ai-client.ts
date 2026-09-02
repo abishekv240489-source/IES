@@ -11,6 +11,13 @@ const responseSchema = z.object({
   overall_confidence: z.number().min(0).max(1),
   engine: z.string().min(1),
   ocr_pages: z.number().int().nonnegative(),
+  ocr_evidence: z.array(z.object({
+    page: z.number().int().positive(),
+    text: z.string(),
+    confidence: z.number().min(0).max(1),
+    quality_score: z.number().min(0).max(1),
+    used_preprocessing: z.boolean(),
+  })),
   processing_ms: z.number().nonnegative(),
   confidence_breakdown: z.object({
     method: z.string().min(1),
@@ -19,6 +26,8 @@ const responseSchema = z.object({
     mapping_confidence: z.number().min(0).max(1),
     ocr_confidence: z.number().min(0).max(1),
     populated_fields: z.number().int().nonnegative(),
+    required_field_confidence: z.number().min(0).max(1),
+    required_fields_present: z.number().int().min(0).max(5),
   }),
   warnings: z.array(z.string()),
 })

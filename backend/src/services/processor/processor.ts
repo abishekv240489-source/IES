@@ -139,10 +139,10 @@ export class InvoiceProcessor {
         await client.query(
           `UPDATE invoice_jobs SET status = $3, overall_confidence = $4, extraction_engine = $5,
              extraction_json = $6::jsonb, validation_json = $7::jsonb, error_code = NULL, error_message = NULL,
-             updated_at = now(), completed_at = now(), version = version + 1
+             ocr_evidence_json = $8::jsonb, updated_at = now(), completed_at = now(), version = version + 1
            WHERE id = $1 AND tenant_id = $2`,
           [task.jobId, task.tenantId, finalStatus, extraction.overall_confidence, extraction.engine,
-            JSON.stringify(extraction.invoice), JSON.stringify(validation)],
+            JSON.stringify(extraction.invoice), JSON.stringify(validation), JSON.stringify(extraction.ocr_evidence)],
         )
         await client.query(
           `UPDATE processing_tasks SET state = 'COMPLETED', leased_by = NULL, lease_expires_at = NULL, updated_at = now()

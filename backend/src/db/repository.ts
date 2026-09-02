@@ -7,6 +7,7 @@ import type { DatabaseClient } from './pool.js'
 export const JOB_COLUMNS = `
   id,
   batch_id AS "batchId",
+  (SELECT status FROM invoice_batches WHERE invoice_batches.id = invoice_jobs.batch_id) AS "batchStatus",
   original_filename AS filename,
   status,
   size_bytes AS "sizeBytes",
@@ -25,6 +26,7 @@ export const JOB_COLUMNS = `
 export interface JobResponse extends QueryResultRow {
   id: string
   batchId: string
+  batchStatus: string
   filename: string
   status: string
   sizeBytes: string | number

@@ -10,6 +10,7 @@ export interface ExtractedField {
 export interface InvoiceJob {
   id: string
   batchId: string
+  batchStatus: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'COMPLETED_WITH_ERRORS'
   filename: string
   status: JobStatus
   sizeBytes: number

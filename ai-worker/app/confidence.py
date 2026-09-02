@@ -10,7 +10,7 @@ from .models import ExtractedField, Invoice, OcrPage
 
 MAPPING_WEIGHT = 0.60
 OCR_WEIGHT = 0.40
-METHOD = "page-aware-weighted-harmonic-v1"
+METHOD = "required-aware-page-harmonic-v2"
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,8 @@ class ConfidenceResult:
     mapping: float
     ocr: float
     populated_fields: int
+    required: float
+    required_present: int
 
 
 def weighted_harmonic(mapping_confidence: float, ocr_confidence: float) -> float:
@@ -50,11 +52,22 @@ def fuse_invoice_confidence(invoice: Invoice, pages: list[OcrPage]) -> Confidenc
         field.confidence = weighted_harmonic(mapping_score, ocr_score)
         fused.append(field.confidence)
 
+    required_fields = [
+        invoice.header.invoiceNumber,
+        invoice.header.invoiceDate,
+        invoice.header.currency,
+        invoice.vendor.name,
+        invoice.amounts.total,
+    ]
+    required_scores = [field.confidence if field.value not in (None, "") else 0.0 for field in required_fields]
+    required_confidence = _mean(required_scores)
     return ConfidenceResult(
-        overall=round(_mean(fused), 4),
+        overall=round(min(_mean(fused), required_confidence), 4),
         mapping=round(_mean(raw_mapping), 4),
         ocr=round(document_ocr, 4),
         populated_fields=len(fused),
+        required=round(required_confidence, 4),
+        required_present=sum(field.value not in (None, "") for field in required_fields),
     )
 
 

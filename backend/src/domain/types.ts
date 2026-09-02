@@ -38,6 +38,13 @@ export interface AiExtractionResponse {
   overall_confidence: number
   engine: string
   ocr_pages: number
+  ocr_evidence: Array<{
+    page: number
+    text: string
+    confidence: number
+    quality_score: number
+    used_preprocessing: boolean
+  }>
   processing_ms: number
   confidence_breakdown: {
     method: string
@@ -46,6 +53,8 @@ export interface AiExtractionResponse {
     mapping_confidence: number
     ocr_confidence: number
     populated_fields: number
+    required_field_confidence: number
+    required_fields_present: number
   }
   warnings: string[]
 }

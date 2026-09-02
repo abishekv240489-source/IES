@@ -20,7 +20,7 @@ def test_weighted_harmonic_uses_both_signals_conservatively() -> None:
     assert weighted_harmonic(0.0, 0.9) == 0.0
 
 
-def test_fusion_is_page_aware_and_excludes_missing_fields() -> None:
+def test_fusion_is_page_aware_and_penalizes_missing_required_fields() -> None:
     invoice = Invoice()
     invoice.header.invoiceNumber.value = "INV-100"
     invoice.header.invoiceNumber.confidence = 0.9
@@ -38,10 +38,10 @@ def test_fusion_is_page_aware_and_excludes_missing_fields() -> None:
     assert result.mapping == 0.9
     assert result.ocr == pytest.approx(0.725)
     assert result.populated_fields == 2
-    assert result.overall == pytest.approx(
-        (invoice.header.invoiceNumber.confidence + invoice.header.currency.confidence) / 2,
-        abs=0.0001,
-    )
+    expected_required = (invoice.header.invoiceNumber.confidence + invoice.header.currency.confidence) / 5
+    assert result.required == pytest.approx(expected_required, abs=0.0001)
+    assert result.required_present == 2
+    assert result.overall == pytest.approx(expected_required, abs=0.0001)
 
 
 def test_reviewed_confidence_is_not_reduced_by_ocr() -> None:
@@ -53,4 +53,4 @@ def test_reviewed_confidence_is_not_reduced_by_ocr() -> None:
     result = fuse_invoice_confidence(invoice, [page(1, 0.1)])
 
     assert invoice.notes.confidence == 1.0
-    assert result.overall == 1.0
+    assert result.overall == 0.0

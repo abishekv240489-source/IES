@@ -5,7 +5,7 @@ Cloud-agnostic invoice ingestion, OCR, structured extraction, validation, and hu
 ## Demo scope
 
 - Batch upload for PDF, PNG, JPEG and TIFF invoices
-- Safe filenames, MIME/magic-byte validation, size/page limits and SHA-256 duplicate detection
+- Safe filenames, MIME/magic-byte validation, size/page limits and SHA-256 duplicate detection; duplicates are labelled but still retained and processed as distinct requested batch items
 - Asynchronous job lifecycle with source-document retention and audit events
 - Embedded PDF text fast path plus low-quality image preprocessing and PaddleOCR adapter
 - Qwen 2.5 7B mapping through an Ollama-compatible endpoint, with a deterministic demo fallback
@@ -70,9 +70,9 @@ Every runtime uses PostgreSQL; there is no H2-only schema. Local and container d
 
 ## Extraction audit packages
 
-Open any invoice review page and select **Invoice audit** or **Batch audit**. The API streams a private ZIP without creating a second persistent copy. Invoice packages are available from `GET /api/v1/invoices/:id/audit`; batch packages are available from `GET /api/v1/batches/:id/audit`.
+Open any invoice review page and select **Invoice audit** or **Batch audit** after processing finishes. The API rejects incomplete snapshots and streams a private ZIP without creating a second persistent copy. Invoice packages are available from `GET /api/v1/invoices/:id/audit`; batch packages are available from `GET /api/v1/batches/:id/audit`.
 
-Each invoice contains its original source, exact extracted-fields JSON, spreadsheet-safe CSV, validation result, extraction revision history, complete audit events and an editable `review-template.json`. Mark reviewed fields as `CORRECT`, `INCORRECT` or `NOT_APPLICABLE`, add corrected values where needed, and return the package for field-level error analysis. Audit ZIPs can contain confidential supplier and invoice data and remain excluded from Git.
+Each invoice contains its original source, exact extracted-fields JSON, spreadsheet-safe CSV, page-level OCR text/confidence evidence, validation result, extraction revision history, complete audit events and an editable `review-template.json`. Mark reviewed fields as `CORRECT`, `INCORRECT` or `NOT_APPLICABLE`, add corrected values where needed, and return the package for field-level error analysis. Audit ZIPs can contain confidential supplier and invoice data and remain excluded from Git.
 
 ## Kubernetes
 

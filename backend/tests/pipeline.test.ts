@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -93,7 +94,13 @@ beforeAll(async () => {
     overall_confidence: 0.99,
     engine: 'paddleocr+qwen-test',
     ocr_pages: 1,
+    ocr_evidence: [{ page: 1, text: 'Synthetic invoice OCR text', confidence: 0.99, quality_score: 0.99, used_preprocessing: false }],
     processing_ms: 50,
+    confidence_breakdown: {
+      method: 'required-aware-page-harmonic-v2', mapping_weight: 0.6, ocr_weight: 0.4,
+      mapping_confidence: 0.99, ocr_confidence: 0.99, populated_fields: 10,
+      required_field_confidence: 0.99, required_fields_present: 5,
+    },
     warnings: [],
   }))
   processor.start()
@@ -172,6 +179,8 @@ describe('Node microservice pipeline', () => {
     expect(archive).toContain('extracted-fields.json')
     expect(archive).toContain('extracted-fields.csv')
     expect(archive).toContain('review-template.json')
+    expect(archive).toContain('ocr-evidence.json')
+    expect(archive).toContain('Synthetic invoice OCR text')
     expect(archive).toContain('TEST-100')
     expect(archive).toContain('%PDF-1.4')
     expect(archive).toContain('AUDIT_PACKAGE_REQUESTED')
@@ -186,5 +195,54 @@ describe('Node microservice pipeline', () => {
     expect(archive).toContain(`invoices/001-${processedJobId}/source/invoice.pdf`)
     expect(archive).toContain('batch-audit-events.json')
     expect(archive).toContain('BATCH_AUDIT_PACKAGE_REQUESTED')
+  })
+
+  it('retains and processes duplicate content as a new batch item', async () => {
+    const upload = multipart('invoice-copy.pdf', Buffer.from('%PDF-1.4\n%%EOF\n'))
+    const response = await api.inject({
+      method: 'POST',
+      url: '/api/v1/invoices',
+      headers: { 'content-type': upload.contentType },
+      payload: upload.body,
+    })
+    expect(response.statusCode).toBe(202)
+    const payload = response.json()
+    expect(payload.batchId).not.toBe(processedBatchId)
+    expect(payload.jobs[0].id).not.toBe(processedJobId)
+    expect(payload.jobs[0].duplicate).toBe(true)
+    expect(payload.jobs[0].status).toBe('QUEUED')
+
+    const duplicateJob = await eventually(
+      async () => (await api.inject({ method: 'GET', url: `/api/v1/invoices/${payload.jobs[0].id}` })).json(),
+      (value) => value.status === 'COMPLETED',
+    )
+    expect(duplicateJob.filename).toBe('invoice-copy.pdf')
+    const count = await postgres.query<{ count: number }>('SELECT count(*)::integer AS count FROM invoice_jobs')
+    expect(count.rows[0]?.count).toBe(2)
+
+    const batchAudit = await api.inject({ method: 'GET', url: `/api/v1/batches/${payload.batchId}/audit` })
+    expect(batchAudit.statusCode).toBe(200)
+    expect(batchAudit.rawPayload.toString('utf8')).toContain('invoice-copy.pdf')
+  })
+
+  it('rejects invoice and batch audit snapshots while processing is active', async () => {
+    const batchId = randomUUID()
+    const jobId = randomUUID()
+    await postgres.query(
+      "INSERT INTO invoice_batches(id, tenant_id, submitted_by, document_count, status) VALUES ($1, '00000000-0000-4000-8000-000000000001', 'test', 1, 'PROCESSING')",
+      [batchId],
+    )
+    await postgres.query(
+      `INSERT INTO invoice_jobs(id, tenant_id, batch_id, original_filename, stored_filename, sha256, content_type, size_bytes, status)
+       VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, 'active.pdf', $3, $4, 'application/pdf', 1, 'QUEUED')`,
+      [jobId, batchId, `${jobId}.pdf`, 'f'.repeat(64)],
+    )
+
+    const invoiceAudit = await api.inject({ method: 'GET', url: `/api/v1/invoices/${jobId}/audit` })
+    expect(invoiceAudit.statusCode).toBe(409)
+    expect(invoiceAudit.json().code).toBe('AUDIT_NOT_READY')
+    const batchAudit = await api.inject({ method: 'GET', url: `/api/v1/batches/${batchId}/audit` })
+    expect(batchAudit.statusCode).toBe(409)
+    expect(batchAudit.json().code).toBe('AUDIT_NOT_READY')
   })
 })

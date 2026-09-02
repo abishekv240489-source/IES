@@ -66,6 +66,7 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
         overall_confidence=confidence.overall,
         engine=f"{ocr_engine}+{mapping_engine}",
         ocr_pages=len(pages),
+        ocr_evidence=pages,
         processing_ms=elapsed_ms,
         confidence_breakdown=ConfidenceBreakdown(
             method=METHOD,
@@ -74,6 +75,8 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
             mapping_confidence=confidence.mapping,
             ocr_confidence=confidence.ocr,
             populated_fields=confidence.populated_fields,
+            required_field_confidence=confidence.required,
+            required_fields_present=confidence.required_present,
         ),
         warnings=ocr_warnings + mapping_warnings,
     )

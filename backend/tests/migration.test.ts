@@ -103,6 +103,14 @@ describe('PostgreSQL schema', () => {
     `)).rejects.toThrow()
   })
 
+  it('retains page-level OCR evidence for audit analysis', async () => {
+    const result = await database.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'invoice_jobs' AND column_name = 'ocr_evidence_json'`,
+    )
+    expect(result.rows).toHaveLength(1)
+  })
+
   it('enforces SOP processing-state choices', async () => {
     await expect(database.exec(`
       INSERT INTO invoice_headers(

@@ -95,6 +95,8 @@ class ConfidenceBreakdown(BaseModel):
     mapping_confidence: float = Field(ge=0, le=1)
     ocr_confidence: float = Field(ge=0, le=1)
     populated_fields: int = Field(ge=0)
+    required_field_confidence: float = Field(ge=0, le=1)
+    required_fields_present: int = Field(ge=0, le=5)
 
 
 class ExtractionResponse(BaseModel):
@@ -104,6 +106,7 @@ class ExtractionResponse(BaseModel):
     engine: str
     schema_version: str = "1.0"
     ocr_pages: int
+    ocr_evidence: list[OcrPage]
     processing_ms: int
     confidence_breakdown: ConfidenceBreakdown
     warnings: list[str] = []
