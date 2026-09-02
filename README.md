@@ -72,7 +72,7 @@ Every runtime uses PostgreSQL; there is no H2-only schema. Local and container d
 
 Open any invoice review page and select **Invoice audit** or **Batch audit** after processing finishes. The API rejects incomplete snapshots and streams a private ZIP without creating a second persistent copy. Invoice packages are available from `GET /api/v1/invoices/:id/audit`; batch packages are available from `GET /api/v1/batches/:id/audit`.
 
-Each invoice contains its original source, exact extracted-fields JSON, spreadsheet-safe CSV, page-level OCR text/confidence evidence, validation result, extraction revision history, complete audit events and an editable `review-template.json`. Mark reviewed fields as `CORRECT`, `INCORRECT` or `NOT_APPLICABLE`, add corrected values where needed, and return the package for field-level error analysis. Audit ZIPs can contain confidential supplier and invoice data and remain excluded from Git.
+Each invoice contains its original source, exact extracted-fields JSON, spreadsheet-safe CSV, page-level OCR text/confidence evidence, validation result, extraction revision history, complete audit events and an editable `review-template.json`. Mark reviewed fields as `CORRECT`, `INCORRECT` or `NOT_APPLICABLE` and add corrected values where needed. The [private review importer](docs/BENCHMARKING.md#turning-completed-audit-reviews-into-a-benchmark) validates completed packages, creates development ground truth and ranks the fields needing improvement. Audit ZIPs and imported evidence can contain confidential supplier and invoice data and remain excluded from Git.
 
 ## Kubernetes
 

@@ -81,3 +81,19 @@ def test_extra_line_item_reduces_precision(tmp_path: Path) -> None:
     report = build_report(result, extras, predictions, 0.95, 0.98, 15000, 200, False)
     assert report["line_items"]["precision"] == 0.5
     assert report["line_items"]["recall"] == 1
+
+
+def test_report_ranks_fields_with_errors(tmp_path: Path) -> None:
+    truth = tmp_path / "truth"
+    predictions = tmp_path / "predictions"
+    prediction = wrapped_prediction()
+    prediction["vendor"]["name"]["value"] = "Wrong vendor"
+    prediction["header"]["currency"]["value"] = "EUR"
+    write_json(truth / "one.json", truth_payload())
+    write_json(predictions / "one.json", prediction)
+    result, extras = evaluate(truth, predictions)
+    report = build_report(result, extras, predictions, 0.95, 0.98, 15000, 200, False)
+    assert {item["field"] for item in report["improvement_priorities"]} == {
+        "header.currency", "vendor.name"
+    }
+    assert all(item["errors"] == 1 for item in report["improvement_priorities"])

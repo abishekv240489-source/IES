@@ -276,6 +276,18 @@ def build_report(
     throughput_passed = throughput_measured and float(throughput) >= min_throughput
     performance_passed = (latency_passed and throughput_passed) if require_performance else True
 
+    per_field = {path: _counter_report(counter) for path, counter in sorted(result.per_field.items())}
+    improvement_priorities = [
+        {
+            "field": path,
+            "errors": counter.labelled - counter.correct,
+            "labelled": counter.labelled,
+            "accuracy": round(counter.accuracy, 6),
+        }
+        for path, counter in result.per_field.items()
+        if counter.correct < counter.labelled
+    ]
+    improvement_priorities.sort(key=lambda item: (-item["errors"], item["accuracy"], item["field"]))
     return {
         "schema_version": "2.0",
         "documents": {
@@ -306,7 +318,8 @@ def build_report(
         },
         "by_quality": _strata_report(result.by_quality),
         "by_layout": _strata_report(result.by_layout),
-        "per_field": {path: _counter_report(counter) for path, counter in sorted(result.per_field.items())},
+        "per_field": per_field,
+        "improvement_priorities": improvement_priorities,
         "gates": {
             "field_accuracy": {"minimum": min_field_accuracy, "passed": field_passed},
             "critical_field_accuracy": {"minimum": min_critical_accuracy, "passed": critical_passed},

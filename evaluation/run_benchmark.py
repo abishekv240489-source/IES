@@ -95,7 +95,8 @@ def main() -> int:
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--base-url", default="http://127.0.0.1:8080")
     parser.add_argument("--concurrency", type=int, default=4)
-    parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--timeout", type=float, default=300,
+                        help="Seconds allowed per invoice; accuracy-first OCR/Qwen runs may take several minutes")
     args = parser.parse_args()
     if args.concurrency < 1:
         parser.error("--concurrency must be at least 1")

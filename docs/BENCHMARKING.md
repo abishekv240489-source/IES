@@ -31,4 +31,24 @@ Synthetic invoices are useful for regression, failure-path and degraded-image te
 
 Never tune prompts, regexes or normalization rules against the holdout. Use a separate training/development set, freeze the model and configuration, then run the holdout once for the release candidate.
 
+## Turning completed audit reviews into a benchmark
+
+Keep the audit ZIP and generated dataset under `data/`; both locations are excluded from Git. In every `review-template.json`, review every field as `CORRECT`, `INCORRECT` (with `correctedValue`) or `NOT_APPLICABLE`. The importer rejects incomplete reviews, altered extracted values, unsafe archive paths, oversized entries and source hash mismatches.
+
+```powershell
+python evaluation/import_audit_reviews.py `
+  --audit "C:\private\batch-audit-reviewed.zip" `
+  --output-root data/benchmarks/reviewed-development `
+  --quality scan_clean `
+  --layout services
+
+python evaluation/evaluate.py `
+  --truth data/benchmarks/reviewed-development/ground_truth `
+  --predictions data/benchmarks/reviewed-development/reviewed_predictions `
+  --output reports/generated/reviewed-development.json `
+  --report-only
+```
+
+The generated report includes `improvement_priorities`, ranked by observed field errors. The imported dataset is marked `release_holdout: false`: it is development evidence because its reviewed results have already been seen. A separate frozen representative holdout remains mandatory for the production accuracy claim.
+
 The checked-in [synthetic v1 development baseline](baselines/SYNTHETIC_V1_BASELINE.md) demonstrates the expected report and records the current OCR/runtime measurements without storing invoice documents or predictions in Git.
