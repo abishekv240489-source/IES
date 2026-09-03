@@ -40,11 +40,16 @@ export async function extractInvoice(
   const body = new FormData()
   body.set('document_id', input.jobId)
   body.set('file', new Blob([bytes], { type: input.contentType }), input.originalFilename)
+  const timeout = AbortSignal.timeout(config.IES_AI_TIMEOUT_MS)
   const response = await fetch(`${config.IES_AI_WORKER_URL.replace(/\/$/, '')}/v1/extract`, {
     method: 'POST',
     body,
-    signal: AbortSignal.timeout(config.IES_AI_TIMEOUT_MS),
+    signal: timeout,
+  }).catch((error: unknown) => {
+    if (timeout.aborted) throw new Error('AI_WORKER_TIMEOUT')
+    throw error
   })
+  if (response.status === 503) throw new Error('AI_WORKER_BUSY')
   if (!response.ok) throw new Error(`AI_WORKER_REJECTED_${response.status}`)
   return responseSchema.parse(await response.json())
 }

@@ -26,6 +26,7 @@ export class InvoiceProcessor {
   private active = 0
   private timer?: NodeJS.Timeout
   private stopping = false
+  private filling = false
 
   constructor(
     private readonly config: Config,
@@ -43,7 +44,7 @@ export class InvoiceProcessor {
   async stop(): Promise<void> {
     this.stopping = true
     if (this.timer) clearInterval(this.timer)
-    while (this.active > 0) await new Promise((resolve) => setTimeout(resolve, 50))
+    while (this.active > 0 || this.filling) await new Promise((resolve) => setTimeout(resolve, 50))
   }
 
   status() {
@@ -51,15 +52,23 @@ export class InvoiceProcessor {
   }
 
   private async fillCapacity(): Promise<void> {
-    if (this.stopping) return
-    while (this.active < this.config.IES_PROCESSOR_CONCURRENCY) {
-      const task = await this.claim().catch(() => undefined)
-      if (!task) return
-      this.active += 1
-      void this.process(task).finally(() => {
-        this.active -= 1
-        void this.fillCapacity()
-      })
+    if (this.stopping || this.filling) return
+    this.filling = true
+    try {
+      while (!this.stopping && this.active < this.config.IES_PROCESSOR_CONCURRENCY) {
+        const task = await this.claim().catch(() => undefined)
+        if (!task) return
+        this.active += 1
+        void this.process(task).catch(() => {
+          // A database outage can prevent failOrRetry from persisting state.
+          // Leave the lease recoverable; do not produce an unhandled rejection.
+        }).finally(() => {
+          this.active -= 1
+          void this.fillCapacity()
+        })
+      }
+    } finally {
+      this.filling = false
     }
   }
 
@@ -87,7 +96,7 @@ export class InvoiceProcessor {
          FROM candidate WHERE task.id = candidate.id
          RETURNING task.id AS "taskId", task.tenant_id AS "tenantId", task.job_id AS "jobId",
                    task.attempts, task.max_attempts AS "maxAttempts"`,
-        [this.workerId, this.config.IES_PROCESSOR_LEASE_SECONDS],
+        [this.workerId, Math.max(this.config.IES_PROCESSOR_LEASE_SECONDS, Math.ceil(this.config.IES_AI_TIMEOUT_MS / 1000) + 120)],
       )
       const task = claimed.rows[0]
       if (!task) return undefined
@@ -122,7 +131,7 @@ export class InvoiceProcessor {
         "UPDATE invoice_jobs SET status = 'VALIDATING', updated_at = now(), version = version + 1 WHERE id = $1 AND tenant_id = $2",
         [task.jobId, task.tenantId],
       )
-      const validation = validateInvoice(extraction.invoice, this.config.IES_MIN_FIELD_CONFIDENCE)
+      const validation = validateInvoice(extraction.invoice, this.config.IES_MIN_FIELD_CONFIDENCE, extraction.warnings)
       await transaction(this.database, async (client) => {
         await client.query('SELECT id FROM invoice_jobs WHERE id = $1 AND tenant_id = $2 FOR UPDATE', [task.jobId, task.tenantId])
         await persistExtraction(client, {
@@ -165,13 +174,15 @@ export class InvoiceProcessor {
     const message = errorMessage(error).slice(0, 1000)
     const errorCode = /^[A-Z0-9_]+$/.test(message) ? message.slice(0, 80) : 'PROCESSING_FAILED'
     await transaction(this.database, async (client) => {
-      if (task.attempts < task.maxAttempts) {
-        const delaySeconds = Math.min(60, 2 ** task.attempts)
+      const busy = errorCode === 'AI_WORKER_BUSY'
+      if (busy || task.attempts < task.maxAttempts) {
+        const delaySeconds = busy ? 15 : Math.min(60, 2 ** task.attempts)
         await client.query(
           `UPDATE processing_tasks SET state = 'RETRY', leased_by = NULL, lease_expires_at = NULL,
-             available_at = now() + ($3 * interval '1 second'), last_error_code = $4, last_error_message = $5, updated_at = now()
+             available_at = now() + ($3 * interval '1 second'), last_error_code = $4, last_error_message = $5,
+             attempts = attempts - $6, updated_at = now()
            WHERE id = $1 AND leased_by = $2`,
-          [task.taskId, this.workerId, delaySeconds, errorCode, message],
+          [task.taskId, this.workerId, delaySeconds, errorCode, message, busy ? 1 : 0],
         )
         await client.query(
           "UPDATE invoice_jobs SET status = 'QUEUED', error_code = $3, error_message = $4, updated_at = now(), version = version + 1 WHERE id = $1 AND tenant_id = $2",

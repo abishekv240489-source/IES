@@ -39,4 +39,30 @@ describe('invoice validation', () => {
   it('computes mean confidence across nested scalar fields', () => {
     expect(overallConfidence({ one: field('a', 1), nested: { two: field('b', 0.5) } })).toBe(0.75)
   })
+
+  it('never silently approves a fallback or missing line items', () => {
+    const invoice = validInvoice()
+    invoice.lineItems = []
+    const result = validateInvoice(invoice, 0.7, ['Qwen unavailable; heuristic fallback used'])
+    expect(result.reviewRequired).toBe(true)
+    expect(result.issues.map((entry) => entry.code)).toEqual(expect.arrayContaining(['MISSING_LINE_ITEMS', 'EXTRACTION_WARNING']))
+  })
+
+  it('rejects nonnumeric totals and missing line amounts', () => {
+    const invoice = validInvoice()
+    invoice.amounts.total = field('unknown')
+    invoice.lineItems[0]!.amount = field(null)
+    const result = validateInvoice(invoice, 0.7)
+    expect(result.issues.map((entry) => entry.code)).toEqual(expect.arrayContaining(['INVALID_AMOUNT', 'INVALID_LINE_AMOUNT']))
+  })
+
+  it('flags unit prices without quantities and customer names used as references', () => {
+    const invoice = { ...validInvoice(),
+      billTo: { entity: field('Customer'), accountingReference: field('Customer') },
+      lineItems: [{ description: field('Service'), amount: field(100), unitPrice: field(100) }],
+    }
+    expect(validateInvoice(invoice, 0.7).issues.map((entry) => entry.code)).toEqual(expect.arrayContaining([
+      'PRICE_WITHOUT_QUANTITY', 'REFERENCE_ROLE_AMBIGUOUS',
+    ]))
+  })
 })

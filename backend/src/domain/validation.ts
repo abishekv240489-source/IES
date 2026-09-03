@@ -1,6 +1,6 @@
 import type { ExtractedField, ValidationIssue, ValidationResult } from './types.js'
 
-const RULE_VERSION = '2026.09.1'
+const RULE_VERSION = '2026.09.3'
 const CURRENCY = /^[A-Z]{3}$/
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -43,11 +43,12 @@ function numericValue(field: ExtractedField | undefined): number | undefined {
   return Number.isFinite(value) ? value : undefined
 }
 
-export function validateInvoice(invoice: Record<string, unknown>, confidenceThreshold: number): ValidationResult {
+export function validateInvoice(invoice: Record<string, unknown>, confidenceThreshold: number, extractionWarnings: string[] = []): ValidationResult {
   const issues: ValidationIssue[] = []
   const required = [
     ['header.invoiceNumber', 'Invoice number'],
     ['header.invoiceDate', 'Invoice date'],
+    ['header.currency', 'Currency'],
     ['vendor.name', 'Vendor name'],
     ['amounts.total', 'Total amount'],
   ] as const
@@ -80,6 +81,35 @@ export function validateInvoice(invoice: Record<string, unknown>, confidenceThre
   }
 
   const lines = Array.isArray(invoice.lineItems) ? invoice.lineItems : []
+  if (!lines.length) issue(issues, '/lineItems', 'MISSING_LINE_ITEMS', 'No line items were extracted; compare with the source invoice', 'WARN')
+  for (const [index, line] of lines.entries()) {
+    const record = typeof line === 'object' && line !== null ? line as Record<string, unknown> : {}
+    if (numericValue(isField(record.amount) ? record.amount : undefined) === undefined) {
+      issue(issues, `/lineItems/${index}/amount`, 'INVALID_LINE_AMOUNT', 'A numeric line amount is required for reconciliation', 'BLOCK')
+    }
+    if (!isField(record.description) || !String(record.description.value ?? '').trim()) {
+      issue(issues, `/lineItems/${index}/description`, 'MISSING_LINE_DESCRIPTION', 'Line description is missing', 'WARN')
+    }
+    if (isField(record.unitPrice) && record.unitPrice.value != null &&
+        (!isField(record.quantity) || record.quantity.value == null)) {
+      issue(issues, `/lineItems/${index}/unitPrice`, 'PRICE_WITHOUT_QUANTITY', 'Unit price has no quantity; verify that a line amount was not misclassified', 'WARN')
+    }
+  }
+  if (numericValue(fieldAt(invoice, 'amounts.total')) === undefined) {
+    issue(issues, '/amounts/total', 'INVALID_AMOUNT', 'Total must be numeric', 'BLOCK')
+  }
+  for (const warning of extractionWarnings) {
+    issue(issues, '/', 'EXTRACTION_WARNING', warning, 'WARN')
+  }
+  const supplier = String(fieldAt(invoice, 'vendor.name')?.value ?? '').trim().toLowerCase()
+  const buyer = String(fieldAt(invoice, 'billTo.entity')?.value ?? '').trim().toLowerCase()
+  if (supplier && supplier === buyer) {
+    issue(issues, '/billTo/entity', 'PARTY_ROLE_AMBIGUOUS', 'Supplier and buyer are identical; verify their roles', 'WARN')
+  }
+  const accountingReference = String(fieldAt(invoice, 'billTo.accountingReference')?.value ?? '').trim().toLowerCase()
+  if (buyer && accountingReference === buyer) {
+    issue(issues, '/billTo/accountingReference', 'REFERENCE_ROLE_AMBIGUOUS', 'Customer name was also mapped as an accounting reference; verify source', 'WARN')
+  }
   if (lines.length) {
     const lineTotal = lines.reduce((sum, line) => {
       if (typeof line !== 'object' || line === null) return sum

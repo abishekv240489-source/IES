@@ -80,6 +80,23 @@ The Kustomize baseline in [`deploy/k8s`](deploy/k8s/README.md) uses non-root con
 
 ## Accuracy and performance gates
 
+Accuracy-first defaults now run Qwen even when the heuristic mapper finds a complete
+header. `IES_HYBRID_FAST_PATH=true` explicitly restores the old shortcut. Missing line
+items, nonnumeric amounts, mapper disagreements and extraction warnings require review;
+a confidence score alone is not measured accuracy. Scanned pages use PaddleOCR; usable
+PDF text layers are still read directly and labelled `embedded-text` in the audit.
+
+One local processor request runs at a time (`IES_PROCESSOR_CONCURRENCY=1`). The AI worker
+rejects overlapping pipelines with `503 AI_WORKER_BUSY`, and the durable queue defers
+them without consuming extraction retries. Client cancellation retains the OCR slot
+and temporary input until native work ends. Qwen has a 300-second limit and the complete
+pipeline has a 900-second limit; leases exceed that limit. These are ceilings, not latency
+promises. Restart the AI worker and processor after changing `.env`. Scale by adding
+independent AI-worker replicas after measuring memory and throughput.
+
+The synthetic figures below describe an earlier fast-path baseline, not the current
+accuracy-first configuration or measured performance on customer documents.
+
 The requirements `>=95% field accuracy`, `>=200 invoices/hour`, and `<15s latency` are acceptance targets. They are not claimed until the benchmark set contains labelled, representative invoices and the generated report passes all gates. See [docs/ACCEPTANCE_TEST_PLAN.md](docs/ACCEPTANCE_TEST_PLAN.md).
 
 The repository includes a deterministic synthetic invoice generator, degraded-scan variants, an API benchmark runner, strict missing-document penalties, line-item metrics and quality/layout breakdowns. See [docs/BENCHMARKING.md](docs/BENCHMARKING.md). Synthetic results are regression evidence only and are never presented as production accuracy.

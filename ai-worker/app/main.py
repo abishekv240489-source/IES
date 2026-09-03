@@ -5,6 +5,7 @@ import hashlib
 import logging
 import tempfile
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -20,6 +21,38 @@ app = FastAPI(title="IES AI Worker", version="0.1.0", docs_url="/docs")
 REQUIRED_FORM = Form(...)
 REQUIRED_FILE = File(...)
 PIPELINE_SEMAPHORE = asyncio.Semaphore(1)
+
+
+@asynccontextmanager
+async def pipeline_slot():
+    # Do not let HTTP requests queue behind native OCR: their timeouts would
+    # expire before processing starts. The durable processor owns the queue.
+    if PIPELINE_SEMAPHORE.locked():
+        raise HTTPException(status_code=503, detail="AI_WORKER_BUSY", headers={"Retry-After": "15"})
+    await PIPELINE_SEMAPHORE.acquire()
+    try:
+        yield
+    finally:
+        PIPELINE_SEMAPHORE.release()
+
+
+async def run_pipeline_safely(target: Path):
+    task = asyncio.create_task(asyncio.to_thread(_run_pipeline, target))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # A disconnected client cannot cancel a native thread. Keep both its
+        # input directory and the exclusive slot alive until it actually ends.
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except Exception:  # noqa: BLE001 — preserve cancellation after native work finishes
+                break
+        if not task.cancelled():
+            task.exception()
+        raise
 
 
 def _run_pipeline(target: Path):
@@ -48,7 +81,7 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
 
     byte_count = 0
     digest = hashlib.sha256()
-    with tempfile.TemporaryDirectory(prefix="ies-") as temp_dir:
+    async with pipeline_slot(), _temporary_directory() as temp_dir:
         target = Path(temp_dir) / f"document{suffix}"
         with target.open("wb") as output:
             while chunk := await file.read(1024 * 1024):
@@ -61,15 +94,9 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
             # PaddleOCR is CPU-heavy and its native runtime is not safe to share
             # concurrently. Keep one pipeline active without blocking FastAPI's
             # event loop, so health and status requests remain responsive.
-            async with PIPELINE_SEMAPHORE:
-                (
-                    pages,
-                    ocr_engine,
-                    ocr_warnings,
-                    invoice,
-                    mapping_engine,
-                    mapping_warnings,
-                ) = await asyncio.to_thread(_run_pipeline, target)
+            (
+                pages, ocr_engine, ocr_warnings, invoice, mapping_engine, mapping_warnings,
+            ) = await run_pipeline_safely(target)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except Exception as error:
@@ -98,3 +125,9 @@ async def extract(document_id: str = REQUIRED_FORM, file: UploadFile = REQUIRED_
         ),
         warnings=ocr_warnings + mapping_warnings,
     )
+
+
+@asynccontextmanager
+async def _temporary_directory():
+    with tempfile.TemporaryDirectory(prefix="ies-") as directory:
+        yield directory
