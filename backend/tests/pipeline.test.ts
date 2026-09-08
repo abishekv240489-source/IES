@@ -245,4 +245,55 @@ describe('Node microservice pipeline', () => {
     expect(batchAudit.statusCode).toBe(409)
     expect(batchAudit.json().code).toBe('AUDIT_NOT_READY')
   })
+
+  it('cancels one invoice without cancelling its sibling batch item', async () => {
+    const batchId = randomUUID()
+    const firstJobId = randomUUID()
+    const secondJobId = randomUUID()
+    await postgres.query(
+      "INSERT INTO invoice_batches(id, tenant_id, submitted_by, document_count, status) VALUES ($1, '00000000-0000-4000-8000-000000000001', 'test', 2, 'PROCESSING')",
+      [batchId],
+    )
+    for (const [jobId, name] of [[firstJobId, 'cancel-me.pdf'], [secondJobId, 'keep-me.pdf']]) {
+      await postgres.query(
+        `INSERT INTO invoice_jobs(id, tenant_id, batch_id, original_filename, stored_filename, sha256, content_type, size_bytes, status)
+         VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, $3, $4, $5, 'application/pdf', 1, 'QUEUED')`,
+        [jobId, batchId, name, `${jobId}.pdf`, randomUUID().replaceAll('-', '').padEnd(64, '0')],
+      )
+      await postgres.query('INSERT INTO processing_tasks(id, tenant_id, job_id) VALUES ($1, $2, $3)', [randomUUID(), '00000000-0000-4000-8000-000000000001', jobId])
+    }
+    const response = await api.inject({ method: 'POST', url: `/api/v1/invoices/${firstJobId}/cancel` })
+    expect(response.statusCode).toBe(200)
+    expect(response.json().status).toBe('CANCELLED')
+    const states = await postgres.query<{ id: string; status: string }>('SELECT id, status FROM invoice_jobs WHERE batch_id = $1 ORDER BY id', [batchId])
+    expect(states.rows.find((row) => row.id === firstJobId)?.status).toBe('CANCELLED')
+    expect(states.rows.find((row) => row.id === secondJobId)?.status).toBe('QUEUED')
+    const events = await postgres.query<{ action: string }>('SELECT action FROM audit_events WHERE job_id = $1', [firstJobId])
+    expect(events.rows.map((row) => row.action)).toContain('PROCESSING_CANCELLED')
+  })
+
+  it('cancels every active item in a batch and preserves completed items', async () => {
+    const batchId = randomUUID()
+    const activeJobId = randomUUID()
+    const completedJobId = randomUUID()
+    await postgres.query(
+      "INSERT INTO invoice_batches(id, tenant_id, submitted_by, document_count, status) VALUES ($1, '00000000-0000-4000-8000-000000000001', 'test', 2, 'PROCESSING')",
+      [batchId],
+    )
+    for (const [jobId, status] of [[activeJobId, 'QUEUED'], [completedJobId, 'COMPLETED']]) {
+      await postgres.query(
+        `INSERT INTO invoice_jobs(id, tenant_id, batch_id, original_filename, stored_filename, sha256, content_type, size_bytes, status)
+         VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, $3, $4, $5, 'application/pdf', 1, $6)`,
+        [jobId, batchId, `${jobId}.pdf`, `${jobId}.pdf`, randomUUID().replaceAll('-', '').padEnd(64, '0'), status],
+      )
+      if (status === 'QUEUED') await postgres.query('INSERT INTO processing_tasks(id, tenant_id, job_id) VALUES ($1, $2, $3)', [randomUUID(), '00000000-0000-4000-8000-000000000001', jobId])
+    }
+    const response = await api.inject({ method: 'POST', url: `/api/v1/batches/${batchId}/cancel` })
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ batchId, cancelledJobs: 1, status: 'CANCELLED' })
+    const statuses = await postgres.query<{ status: string }>('SELECT status FROM invoice_jobs WHERE batch_id = $1 ORDER BY status', [batchId])
+    expect(statuses.rows.map((row) => row.status)).toEqual(['CANCELLED', 'COMPLETED'])
+    const batch = await postgres.query<{ status: string }>('SELECT status FROM invoice_batches WHERE id = $1', [batchId])
+    expect(batch.rows[0]?.status).toBe('CANCELLED')
+  })
 })

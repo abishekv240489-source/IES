@@ -20,3 +20,11 @@ export async function uploadInvoices(files: File[]) {
 export async function reviewInvoice(id: string, extraction: Record<string, unknown>, approved: boolean, remarks: string) {
   return (await api.patch<InvoiceJob>(`/invoices/${id}/review`, { extraction, approved, remarks })).data
 }
+
+export async function cancelInvoice(id: string) {
+  return (await api.post<InvoiceJob>(`/invoices/${id}/cancel`)).data
+}
+
+export async function cancelBatch(id: string) {
+  return (await api.post<{ batchId: string; cancelledJobs: number; status: string }>(`/batches/${id}/cancel`)).data
+}

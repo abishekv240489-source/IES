@@ -53,6 +53,54 @@ function sendAuditArchive(reply: FastifyReply, archive: { filename: string; stre
   return reply.send(archive.stream)
 }
 
+const cancellableJobStatuses = ['QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING'] as const
+
+async function cancelJob(client: import('../../db/pool.js').DatabaseClient, jobId: string, actor: string) {
+  const job = await client.query<{ id: string; batchId: string; status: string }>(
+    `SELECT id, batch_id AS "batchId", status FROM invoice_jobs
+     WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+    [LOCAL_TENANT_ID, jobId],
+  )
+  const current = job.rows[0]
+  if (!current) throw new ApiError(404, 'Invoice not found', 'NOT_FOUND')
+  if (!cancellableJobStatuses.includes(current.status as typeof cancellableJobStatuses[number])) {
+    throw new ApiError(409, `Invoice cannot be cancelled from ${current.status}`, 'INVALID_STATE')
+  }
+  await client.query(
+    `UPDATE invoice_jobs SET status = 'CANCELLED', error_code = 'PROCESSING_CANCELLED',
+       error_message = 'Processing cancelled by user', completed_at = now(), updated_at = now(), version = version + 1
+     WHERE tenant_id = $1 AND id = $2`,
+    [LOCAL_TENANT_ID, jobId],
+  )
+  await client.query(
+    `UPDATE processing_tasks SET state = 'CANCELLED', leased_by = NULL, lease_expires_at = NULL,
+       last_error_code = 'PROCESSING_CANCELLED', last_error_message = 'Processing cancelled by user', updated_at = now()
+     WHERE tenant_id = $1 AND job_id = $2 AND state IN ('READY', 'RETRY', 'LEASED')`,
+    [LOCAL_TENANT_ID, jobId],
+  )
+  await audit(client, { tenantId: LOCAL_TENANT_ID, jobId, batchId: current.batchId,
+    action: 'PROCESSING_CANCELLED', actor, detail: 'Invoice processing cancelled by user' })
+  return current.batchId
+}
+
+async function refreshBatchAfterCancellation(client: import('../../db/pool.js').DatabaseClient, batchId: string) {
+  const counts = await client.query<{ active: string; cancelled: string; failed: string }>(
+    `SELECT count(*) FILTER (WHERE status IN ('QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING')) AS active,
+            count(*) FILTER (WHERE status = 'CANCELLED') AS cancelled,
+            count(*) FILTER (WHERE status IN ('FAILED', 'REJECTED')) AS failed
+     FROM invoice_jobs WHERE tenant_id = $1 AND batch_id = $2`,
+    [LOCAL_TENANT_ID, batchId],
+  )
+  const row = counts.rows[0]
+  if (Number(row?.active ?? 0) === 0 && Number(row?.cancelled ?? 0) > 0) {
+    await client.query(
+      `UPDATE invoice_batches SET status = 'COMPLETED_WITH_ERRORS', completed_at = now()
+       WHERE tenant_id = $1 AND id = $2 AND status <> 'CANCELLED'`,
+      [LOCAL_TENANT_ID, batchId],
+    )
+  }
+}
+
 export async function buildApi(config: Config, database: Database): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: config.LOG_LEVEL }, bodyLimit: config.IES_MAX_BATCH_SIZE * config.IES_MAX_FILE_BYTES })
   const auth = new AuthService(config)
@@ -197,6 +245,43 @@ export async function buildApi(config: Config, database: Database): Promise<Fast
     const result = await database.query<JobResponse>(`SELECT ${JOB_COLUMNS} FROM invoice_jobs WHERE tenant_id = $1 AND id = $2`, [LOCAL_TENANT_ID, jobId])
     if (!result.rows[0]) throw new ApiError(404, 'Invoice not found', 'NOT_FOUND')
     return publicJob(result.rows[0])
+  })
+
+  app.post('/api/v1/invoices/:id/cancel', async (request) => {
+    const actor = await auth.actor(request.headers.authorization)
+    const jobId = uuidSchema.parse((request.params as { id: string }).id)
+    return transaction(database, async (client) => {
+      const batchId = await cancelJob(client, jobId, actor)
+      const updated = await getJob(client, LOCAL_TENANT_ID, jobId)
+      await refreshBatchAfterCancellation(client, batchId)
+      return publicJob(updated!)
+    })
+  })
+
+  app.post('/api/v1/batches/:id/cancel', async (request) => {
+    const actor = await auth.actor(request.headers.authorization)
+    const batchId = uuidSchema.parse((request.params as { id: string }).id)
+    return transaction(database, async (client) => {
+      const batch = await client.query<{ id: string; status: string }>(
+        'SELECT id, status FROM invoice_batches WHERE tenant_id = $1 AND id = $2 FOR UPDATE',
+        [LOCAL_TENANT_ID, batchId],
+      )
+      if (!batch.rows[0]) throw new ApiError(404, 'Invoice batch not found', 'NOT_FOUND')
+      const jobs = await client.query<{ id: string }>(
+        `SELECT id FROM invoice_jobs WHERE tenant_id = $1 AND batch_id = $2
+         AND status IN ('QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING') FOR UPDATE`,
+        [LOCAL_TENANT_ID, batchId],
+      )
+      if (!jobs.rows.length) throw new ApiError(409, 'Batch has no invoices that can be cancelled', 'INVALID_STATE')
+      for (const job of jobs.rows) await cancelJob(client, job.id, actor)
+      await client.query(
+        `UPDATE invoice_batches SET status = 'CANCELLED', completed_at = now() WHERE tenant_id = $1 AND id = $2`,
+        [LOCAL_TENANT_ID, batchId],
+      )
+      await audit(client, { tenantId: LOCAL_TENANT_ID, batchId, action: 'BATCH_PROCESSING_CANCELLED', actor,
+        detail: `Cancelled ${jobs.rows.length} invoice(s) in batch` })
+      return { batchId, cancelledJobs: jobs.rows.length, status: 'CANCELLED' }
+    })
   })
 
   app.get('/api/v1/invoices/:id/source', async (request, reply) => {

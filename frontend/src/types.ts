@@ -1,4 +1,4 @@
-export type JobStatus = 'QUEUED' | 'PREPROCESSING' | 'OCR_RUNNING' | 'MAPPING' | 'VALIDATING' | 'PENDING_REVIEW' | 'COMPLETED' | 'FAILED' | 'REJECTED'
+export type JobStatus = 'QUEUED' | 'PREPROCESSING' | 'OCR_RUNNING' | 'MAPPING' | 'VALIDATING' | 'PENDING_REVIEW' | 'COMPLETED' | 'FAILED' | 'REJECTED' | 'CANCELLED'
 
 export interface ExtractedField {
   value: string | number | null
@@ -10,7 +10,7 @@ export interface ExtractedField {
 export interface InvoiceJob {
   id: string
   batchId: string
-  batchStatus: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'COMPLETED_WITH_ERRORS'
+  batchStatus: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'COMPLETED_WITH_ERRORS' | 'CANCELLED'
   filename: string
   status: JobStatus
   sizeBytes: number

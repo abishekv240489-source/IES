@@ -11,6 +11,7 @@ const styles: Record<JobStatus, { bg: string; color: string; label: string }> = 
   COMPLETED: { bg: '#def4ea', color: '#146d50', label: 'Completed' },
   FAILED: { bg: '#fde5e6', color: '#a52d32', label: 'Failed' },
   REJECTED: { bg: '#f1e8e8', color: '#6d4242', label: 'Rejected' },
+  CANCELLED: { bg: '#f2eeee', color: '#6b5555', label: 'Cancelled' },
 }
 
 export function StatusChip({ status }: { status: JobStatus }) {

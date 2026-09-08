@@ -8,6 +8,7 @@ export const JOB_STATUSES = [
   'COMPLETED',
   'FAILED',
   'REJECTED',
+  'CANCELLED',
 ] as const
 
 export type JobStatus = (typeof JOB_STATUSES)[number]

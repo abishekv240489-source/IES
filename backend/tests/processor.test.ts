@@ -29,8 +29,10 @@ describe('processor admission and retry boundaries', () => {
   })
 
   it('busy deferral refunds an attempt even at the retry limit', async () => {
-    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 })
-    const database = { connect: async () => ({ query, release: vi.fn() }) } as unknown as Database
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ status: 'OCR_RUNNING' }], rowCount: 1 })
+      .mockResolvedValue({ rows: [], rowCount: 1 })
+    const database = { query, connect: async () => ({ query, release: vi.fn() }) } as unknown as Database
     const internal = new InvoiceProcessor(loadConfig({}), database) as unknown as Internals
     await internal.failOrRetry({ taskId: 'task', tenantId: 'tenant', jobId: 'job', batchId: 'batch', attempts: 3, maxAttempts: 3 }, new Error('AI_WORKER_BUSY'))
     const update = query.mock.calls.find(([sql]) => String(sql).includes("state = 'RETRY'"))

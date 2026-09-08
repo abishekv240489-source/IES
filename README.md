@@ -74,6 +74,8 @@ Open any invoice review page and select **Invoice audit** or **Batch audit** aft
 
 Each invoice contains its original source, exact extracted-fields JSON, spreadsheet-safe CSV, page-level OCR text/confidence evidence, validation result, extraction revision history, complete audit events and an editable `review-template.json`. Mark reviewed fields as `CORRECT`, `INCORRECT` or `NOT_APPLICABLE` and add corrected values where needed. The [private review importer](docs/BENCHMARKING.md#turning-completed-audit-reviews-into-a-benchmark) validates completed packages, creates development ground truth and ranks the fields needing improvement. Audit ZIPs and imported evidence can contain confidential supplier and invoice data and remain excluded from Git.
 
+Processing can be stopped from the invoice review screen. `POST /api/v1/invoices/:id/cancel` cancels one active invoice; `POST /api/v1/batches/:id/cancel` cancels all still-processing invoices in that batch while preserving completed invoices. Cancellation is durable, audited, and prevents queued retries. If cancellation arrives during OCR or mapping, the in-flight result is discarded rather than committed.
+
 ## Kubernetes
 
 The Kustomize baseline in [`deploy/k8s`](deploy/k8s/README.md) uses non-root containers, health probes, resource limits, default-deny network policies and autoscaling for the AI-worker tier. Stateful dependencies remain external so each environment can use approved managed or in-house services.

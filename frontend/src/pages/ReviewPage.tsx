@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import CheckRounded from '@mui/icons-material/CheckRounded'
+import CancelRounded from '@mui/icons-material/CancelRounded'
 import CloseRounded from '@mui/icons-material/CloseRounded'
 import DescriptionRounded from '@mui/icons-material/DescriptionRounded'
 import DownloadRounded from '@mui/icons-material/DownloadRounded'
@@ -12,7 +13,7 @@ import VisibilityRounded from '@mui/icons-material/VisibilityRounded'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid2, InputAdornment, InputLabel, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getBatchAuditUrl, getEvents, getInvoice, getInvoiceAuditUrl, getInvoiceSourceUrl, reviewInvoice } from '../api'
+import { cancelBatch, cancelInvoice, getBatchAuditUrl, getEvents, getInvoice, getInvoiceAuditUrl, getInvoiceSourceUrl, reviewInvoice } from '../api'
 import { StatusChip } from '../components/StatusChip'
 import type { ExtractedField } from '../types'
 
@@ -108,6 +109,11 @@ export function ReviewPage() {
   const visibleFieldCount = filteredSections.reduce((total, section) => total + section.fields.length, 0)
 
   const mutation = useMutation({ mutationFn: (approved: boolean) => reviewInvoice(id, draft!, approved, remarks), onSuccess: async () => { await client.invalidateQueries({ queryKey: ['invoices'] }); navigate('/invoices') } })
+  const cancelMutation = useMutation({
+    mutationFn: async (scope: 'invoice' | 'batch') => scope === 'invoice' ? cancelInvoice(id) : cancelBatch(query.data?.batchId ?? ''),
+    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['invoices'] }); await client.invalidateQueries({ queryKey: ['invoice', id] }) },
+  })
+  const cancelable = ['QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING'].includes(query.data?.status || '')
 
   const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -148,6 +154,7 @@ export function ReviewPage() {
           <Typography color="text.secondary" mt={.6}>Job {job.id} · {job.engine || 'Awaiting extraction worker'}</Typography>
         </Box>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          {cancelable && <><Button variant="outlined" color="warning" startIcon={<CancelRounded />} disabled={cancelMutation.isPending} onClick={() => { if (window.confirm(`Cancel processing for ${job.filename}?`)) cancelMutation.mutate('invoice') }}>Cancel invoice</Button><Button variant="outlined" color="error" startIcon={<CancelRounded />} disabled={cancelMutation.isPending} onClick={() => { if (window.confirm('Cancel all still-processing invoices in this batch? Completed invoices will be preserved.')) cancelMutation.mutate('batch') }}>Cancel batch</Button></>}
           {!sourceVisible && <Button variant="outlined" startIcon={<VisibilityRounded />} onClick={() => setSourceVisible(true)}>Show source</Button>}
           <Button component="a" href={invoiceAuditUrl} disabled={inProgress} variant="outlined" startIcon={<DownloadRounded />}>Invoice audit</Button>
           <Tooltip title={batchAuditReady ? 'Download all invoices in this completed batch' : 'Available after every invoice in the batch finishes'}>

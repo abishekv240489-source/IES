@@ -127,6 +127,18 @@ export class InvoiceProcessor {
         originalFilename: task.originalFilename,
         contentType: task.contentType,
       })
+      const currentJob = await this.database.query<{ status: string }>(
+        'SELECT status FROM invoice_jobs WHERE id = $1 AND tenant_id = $2',
+        [task.jobId, task.tenantId],
+      )
+      if (currentJob.rows[0]?.status === 'CANCELLED') {
+        await this.database.query(
+          `UPDATE processing_tasks SET state = 'CANCELLED', leased_by = NULL, lease_expires_at = NULL,
+             updated_at = now() WHERE id = $1 AND leased_by = $2`,
+          [task.taskId, this.workerId],
+        )
+        return
+      }
       await this.database.query(
         "UPDATE invoice_jobs SET status = 'VALIDATING', updated_at = now(), version = version + 1 WHERE id = $1 AND tenant_id = $2",
         [task.jobId, task.tenantId],
@@ -171,6 +183,18 @@ export class InvoiceProcessor {
   }
 
   private async failOrRetry(task: ClaimedTask, error: unknown): Promise<void> {
+    const currentJob = await this.database.query<{ status: string }>(
+      'SELECT status FROM invoice_jobs WHERE id = $1 AND tenant_id = $2',
+      [task.jobId, task.tenantId],
+    )
+    if (currentJob.rows[0]?.status === 'CANCELLED') {
+      await this.database.query(
+        `UPDATE processing_tasks SET state = 'CANCELLED', leased_by = NULL, lease_expires_at = NULL,
+           updated_at = now() WHERE id = $1 AND leased_by = $2`,
+        [task.taskId, this.workerId],
+      )
+      return
+    }
     const message = errorMessage(error).slice(0, 1000)
     const errorCode = /^[A-Z0-9_]+$/.test(message) ? message.slice(0, 80) : 'PROCESSING_FAILED'
     await transaction(this.database, async (client) => {
