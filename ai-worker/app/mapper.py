@@ -311,7 +311,44 @@ def heuristic_map(text: str) -> Invoice:
     )
     _map_supplier_and_bill_to_block(invoice, text)
     invoice.lineItems = _line_items(text) or _generic_line_items(text)
+    _populate_party_addresses(invoice, text)
     return invoice
+
+
+def _populate_party_addresses(invoice: Invoice, text: str) -> None:
+    """Recover labelled-party address blocks without asking the LLM to infer roles."""
+    lines = _lines(text)
+    stop = re.compile(r"(?i)^(?:attn|attention|tel|fax|s\.?\s*no|invoice\s+no|date|item|remarks?|our\s+banking|bank|payment|total|[_-]{4,})\b")
+
+    def block_after(value: Any) -> str | None:
+        if value in (None, ""):
+            return None
+        normalized = re.sub(r"\s+", " ", str(value)).strip(" .,:").casefold()
+        for index, line in enumerate(lines):
+            if re.sub(r"\s+", " ", line).strip(" .,:").casefold() != normalized:
+                continue
+            parts: list[str] = []
+            for candidate in lines[index + 1:index + 5]:
+                if stop.match(candidate) or re.match(r"(?i)^(?:s\.?\s*no|currency|amount|total)\b", candidate):
+                    break
+                if ":" in candidate and not re.search(r"\d", candidate):
+                    break
+                parts.append(candidate.strip(" .,"))
+            return ", ".join(parts) if parts else None
+        return None
+
+    if invoice.vendor.address.value in (None, ""):
+        address = block_after(invoice.vendor.name.value)
+        if address:
+            invoice.vendor.address = _field(address, 0.70)
+    if invoice.billTo.address.value in (None, ""):
+        address = block_after(invoice.billTo.entity.value)
+        if address:
+            invoice.billTo.address = _field(address, 0.70)
+    if invoice.vendor.taxRegistration.value in (None, ""):
+        invoice.vendor.taxRegistration = _find(text, [r"(?mi)(?:^|\s)(?:uen|gst|vat|tax)\s*[:#-]?\s*([A-Z0-9-]{5,30})"], 0.74)
+    if invoice.notes.value in (None, ""):
+        invoice.notes = _find(text, [r"(?mi)^\s*(?:remarks?|notes?)\s*:\s*([^\n]{5,300})"], 0.66)
 
 
 def _company_names(text: str) -> list[str]:

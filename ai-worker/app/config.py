@@ -15,7 +15,7 @@ class Settings:
     ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
     request_timeout_seconds: float = float(os.getenv("IES_LLM_TIMEOUT_SECONDS", "300"))
     hybrid_fast_path: bool = _bool("IES_HYBRID_FAST_PATH", False)
-    hybrid_min_populated_fields: int = int(os.getenv("IES_HYBRID_MIN_POPULATED_FIELDS", "20"))
+    hybrid_min_populated_fields: int = int(os.getenv("IES_HYBRID_MIN_POPULATED_FIELDS", "18"))
     max_pages: int = int(os.getenv("IES_MAX_PAGES", "20"))
     max_file_bytes: int = int(os.getenv("IES_MAX_FILE_BYTES", str(20 * 1024 * 1024)))
     embedded_text_min_chars: int = int(os.getenv("IES_EMBEDDED_TEXT_MIN_CHARS", "120"))
