@@ -22,6 +22,8 @@ Vendor is the invoice issuer, not the buyer or beneficiary's bank. Bill To is th
 Extract every invoice line, PO reference and bank account when present. Preserve printed unit prices;
 do not invent quantities for service fees. A table with only Description/Currency/Amount has no unitPrice;
 put the printed charge in lineItems.amount. A customer name is billTo.entity, not accountingReference.
+For delivery tables, map delivery date, vessel name, delivery location and row currency into the
+corresponding line fields. Preserve UoM, tax code and printed price basis when present.
 Total is the final payable amount, not a table heading's next row number.
 Use invoice currency totals, not secondary currency conversions. Supporting delivery notes are not extra invoice lines."""
 
@@ -463,7 +465,11 @@ def _service_table_items(lines: list[str]) -> list[LineItem]:
     )
     if "VESSEL NAME" in text.upper() and "DELIVERY" in text.upper():
         items = [LineItem(lineNumber=_field(m[1], 0.7),
-                          description=_field(f"Delivery {m[2]} — {m[3]} — {m[4]}", 0.68),
+                          deliveryDate=_date(m[2], [r"(.*)"]),
+                          vesselName=_field(m[3], 0.72),
+                          deliveryLocation=_field(m[4], 0.72),
+                          currency=_field(m[5], 0.76),
+                          description=_field(f"Delivery to {m[3]}", 0.68),
                           amount=_field(_number(m[7]), 0.72)) for m in delivery.finditer(text)]
         if items:
             return items
@@ -475,7 +481,8 @@ def _service_table_items(lines: list[str]) -> list[LineItem]:
     if "UoM" in lines and "Tax Code" in lines:
         items = [LineItem(lineNumber=_field(str(i + 1), 0.68), chargeCode=_field(m[1], 0.7),
                           description=_field(m[2], 0.7), quantity=_field(_number(m[3]), 0.7),
-                          unitPrice=_field(_number(m[5]), 0.7), amount=_field(_number(m[6]), 0.72))
+                          uom=_field(m[4], 0.72), unitPrice=_field(_number(m[5]), 0.7),
+                          amount=_field(_number(m[6]), 0.72), taxCode=_field(m[7], 0.72))
                  for i, m in enumerate(inspection.finditer(text))]
         if items:
             return items

@@ -62,10 +62,17 @@ class BankDetails(BaseModel):
 class LineItem(BaseModel):
     lineNumber: ExtractedField = ExtractedField()
     description: ExtractedField = ExtractedField()
+    deliveryDate: ExtractedField = ExtractedField()
+    deliveryLocation: ExtractedField = ExtractedField()
+    vesselName: ExtractedField = ExtractedField()
+    currency: ExtractedField = ExtractedField()
+    uom: ExtractedField = ExtractedField()
     quantity: ExtractedField = ExtractedField()
     unitPrice: ExtractedField = ExtractedField()
     amount: ExtractedField = ExtractedField()
     chargeCode: ExtractedField = ExtractedField()
+    taxCode: ExtractedField = ExtractedField()
+    priceBasis: ExtractedField = ExtractedField()
 
 
 class Invoice(BaseModel):
@@ -104,7 +111,7 @@ class ExtractionResponse(BaseModel):
     invoice: Invoice
     overall_confidence: float = Field(ge=0, le=1)
     engine: str
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"
     ocr_pages: int
     ocr_evidence: list[OcrPage]
     processing_ms: int

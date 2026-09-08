@@ -34,6 +34,10 @@ Total SGD Amount
     assert invoice.billTo.entity.value == "Buyer Shipping Pte. Ltd"
     assert invoice.amounts.total.value == 150
     assert invoice.lineItems[0].amount.value == 150
+    assert invoice.lineItems[0].deliveryDate.value == "2026-06-30"
+    assert invoice.lineItems[0].vesselName.value == "TEST VESSEL"
+    assert invoice.lineItems[0].deliveryLocation.value == "Terminal"
+    assert invoice.lineItems[0].currency.value == "SGD"
     assert invoice.bankDetails.bankName.value == "Example Bank"
 
 

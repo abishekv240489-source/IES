@@ -94,6 +94,13 @@ export function validateInvoice(invoice: Record<string, unknown>, confidenceThre
         (!isField(record.quantity) || record.quantity.value == null)) {
       issue(issues, `/lineItems/${index}/unitPrice`, 'PRICE_WITHOUT_QUANTITY', 'Unit price has no quantity; verify that a line amount was not misclassified', 'WARN')
     }
+    const deliveryDate = isField(record.deliveryDate) ? record.deliveryDate.value : undefined
+    const deliveryLocation = isField(record.deliveryLocation) ? record.deliveryLocation.value : undefined
+    const rowCurrency = isField(record.currency) ? record.currency.value : undefined
+    if ((deliveryDate != null || deliveryLocation != null || rowCurrency != null) &&
+        (deliveryDate == null || deliveryLocation == null || rowCurrency == null)) {
+      issue(issues, `/lineItems/${index}`, 'INCOMPLETE_DELIVERY_ROW', 'Delivery date, location and row currency must be extracted together', 'WARN')
+    }
   }
   if (numericValue(fieldAt(invoice, 'amounts.total')) === undefined) {
     issue(issues, '/amounts/total', 'INVALID_AMOUNT', 'Total must be numeric', 'BLOCK')

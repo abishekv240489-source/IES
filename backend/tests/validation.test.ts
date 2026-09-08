@@ -65,4 +65,12 @@ describe('invoice validation', () => {
       'PRICE_WITHOUT_QUANTITY', 'REFERENCE_ROLE_AMBIGUOUS',
     ]))
   })
+
+  it('flags partially extracted delivery rows', () => {
+    const invoice = { ...validInvoice(), lineItems: [{
+      description: field('Delivery'), amount: field(100), deliveryDate: field('2026-06-30'),
+      deliveryLocation: field(null), currency: field('SGD'),
+    }] }
+    expect(validateInvoice(invoice, 0.7).issues.map((entry) => entry.code)).toContain('INCOMPLETE_DELIVERY_ROW')
+  })
 })
