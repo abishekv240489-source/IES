@@ -22,7 +22,7 @@
     "@fastify/multipart": "^10.1.1",
     "@google/genai": "^2.22.0",
     "fastify": "^5.12.1",
-    "jose": "^6.1.0",
+    "jose": "^6.2.12",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
     "prom-client": "^15.1.3",
