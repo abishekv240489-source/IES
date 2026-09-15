@@ -11,6 +11,7 @@ const environmentSchema = z.object({
   DATABASE_USERNAME: z.string().min(1).default('ies_app'),
   DATABASE_PASSWORD: z.string().default(''),
   IES_STORAGE_ROOT: z.string().min(1).default('./data/invoices'),
+  GEMINI_API_KEY: z.string().min(1).default('mock-key'),
   IES_AI_WORKER_URL: z.string().url().default('http://127.0.0.1:8090'),
   IES_ALLOWED_ORIGINS: z.string().default('http://127.0.0.1:5173,http://localhost:5173'),
   IES_AUTH_ENABLED: booleanValue,
