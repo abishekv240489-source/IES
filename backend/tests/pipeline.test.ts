@@ -135,6 +135,13 @@ describe('Node microservice pipeline', () => {
     expect(job.engine).toBe('paddleocr+qwen-test')
     expect(job.confidence).toBe(0.99)
 
+    const list = await api.inject({ method: 'GET', url: '/api/v1/invoices?size=100' })
+    expect(list.statusCode).toBe(200)
+    expect(list.json()).toMatchObject({
+      content: [expect.objectContaining({ id: jobId, filename: 'invoice.pdf', status: 'COMPLETED' })],
+      totalElements: 1,
+    })
+
     const source = await api.inject({ method: 'GET', url: `/api/v1/invoices/${jobId}/source` })
     expect(source.statusCode).toBe(200)
     expect(source.headers['content-type']).toContain('application/pdf')
