@@ -32,7 +32,7 @@ export async function getInvoices(status?: JobStatus): Promise<PageResponse<Invo
 }
 export async function getInvoice(id: string): Promise<InvoiceJob> {
   const response = await api.get<InvoiceJob | Record<string, unknown>>(`/invoices/${id}`)
-  return normalizeInvoice(response.data)
+  return normalizeInvoice(response.data as Record<string, unknown>)
 }
 export const getEvents = async (id: string) => (await api.get<AuditEvent[]>(`/invoices/${id}/events`)).data
 export const getInvoiceSourceUrl = (id: string) => `${api.defaults.baseURL}/invoices/${encodeURIComponent(id)}/source`
