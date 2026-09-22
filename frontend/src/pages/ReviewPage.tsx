@@ -144,6 +144,9 @@ export function ReviewPage() {
   const sourceUrl = getInvoiceSourceUrl(id)
   const invoiceAuditUrl = getInvoiceAuditUrl(id)
   const batchAuditUrl = getBatchAuditUrl(job.batchId)
+  const cancellationError = cancelMutation.isError
+    ? cancelMutation.error instanceof Error ? cancelMutation.error.message : 'Unable to cancel processing. Please try again.'
+    : null
 
   return <Stack spacing={2.5}>
     <Box>
@@ -165,6 +168,7 @@ export function ReviewPage() {
     </Box>
     {inProgress && <Alert severity="info">Processing is active. This page refreshes automatically.</Alert>}
     {job.error && <Alert severity="error">{job.error}</Alert>}
+    {cancellationError && <Alert severity="error">{cancellationError}</Alert>}
 
     <Box ref={splitRef} className={`review-split ${sourceVisible ? '' : 'source-hidden'}`}>
       {sourceVisible && <Card className="source-pane" sx={{ width: `${sourceWidth}%` }}>
