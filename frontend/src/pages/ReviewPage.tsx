@@ -111,7 +111,11 @@ export function ReviewPage() {
   const mutation = useMutation({ mutationFn: (approved: boolean) => reviewInvoice(id, draft!, approved, remarks), onSuccess: async () => { await client.invalidateQueries({ queryKey: ['invoices'] }); navigate('/invoices') } })
   const cancelMutation = useMutation({
     mutationFn: async (scope: 'invoice' | 'batch') => scope === 'invoice' ? cancelInvoice(id) : cancelBatch(query.data?.batchId ?? ''),
-    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['invoices'] }); await client.invalidateQueries({ queryKey: ['invoice', id] }) },
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ['invoices'] })
+      await client.invalidateQueries({ queryKey: ['invoice', id] })
+      navigate('/invoices')
+    },
   })
   const cancelable = ['QUEUED', 'PREPROCESSING', 'OCR_RUNNING', 'MAPPING', 'VALIDATING'].includes(query.data?.status || '')
 
