@@ -1,20 +1,54 @@
 import { Chip } from '@mui/material'
-import type { JobStatus } from '../types'
 
-const styles: Record<JobStatus, { bg: string; color: string; label: string }> = {
-  QUEUED: { bg: '#edf1f2', color: '#53666c', label: 'Queued' },
-  PREPROCESSING: { bg: '#e7f0ff', color: '#315d96', label: 'Preparing' },
-  OCR_RUNNING: { bg: '#e7f0ff', color: '#315d96', label: 'OCR running' },
-  MAPPING: { bg: '#ede9ff', color: '#5b47a3', label: 'Mapping' },
-  VALIDATING: { bg: '#ede9ff', color: '#5b47a3', label: 'Validating' },
-  PENDING_REVIEW: { bg: '#fff2d9', color: '#945c04', label: 'Needs review' },
-  COMPLETED: { bg: '#def4ea', color: '#146d50', label: 'Completed' },
-  FAILED: { bg: '#fde5e6', color: '#a52d32', label: 'Failed' },
-  REJECTED: { bg: '#f1e8e8', color: '#6d4242', label: 'Rejected' },
-  CANCELLED: { bg: '#f2eeee', color: '#6b5555', label: 'Cancelled' },
-}
+export function StatusChip({ status }: { status: string }) {
+  let label = status
+  let color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' = 'default'
 
-export function StatusChip({ status }: { status: JobStatus }) {
-  const style = styles[status]
-  return <Chip size="small" label={style.label} sx={{ bgcolor: style.bg, color: style.color, borderRadius: 1.5 }} />
+  switch (status) {
+    case 'QUEUED':
+      label = 'Queued'
+      color = 'default'
+      break
+    case 'PREPROCESSING':
+      label = 'Preprocessing'
+      color = 'info'
+      break
+    case 'OCR_RUNNING':
+      label = 'OCR running'
+      color = 'info'
+      break
+    case 'MAPPING':
+      label = 'Mapping'
+      color = 'info'
+      break
+    case 'VALIDATING':
+      label = 'Validating'
+      color = 'info'
+      break
+    case 'PENDING_REVIEW':
+      label = 'Needs review'
+      color = 'warning'
+      break
+    case 'COMPLETED':
+      label = 'Completed'
+      color = 'success'
+      break
+    case 'FAILED':
+      label = 'Failed'
+      color = 'error'
+      break
+    case 'REJECTED':
+      label = 'Rejected'
+      color = 'error'
+      break
+    case 'CANCELLED':
+      label = 'Cancelled'
+      color = 'default'
+      break
+    default:
+      label = status.replace(/_/g, ' ')
+      color = 'default'
+  }
+
+  return <Chip size="small" variant="outlined" label={label} color={color} sx={{ fontWeight: 600 }} />
 }

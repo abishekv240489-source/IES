@@ -15,6 +15,7 @@ export interface InvoiceJob {
   status: JobStatus
   sizeBytes: number
   confidence: number | null
+  confidenceBreakdown?: ConfidenceBreakdown;
   engine: string | null
   extraction: Record<string, unknown> | null
   validation: { reviewRequired: boolean; issues: ValidationIssue[]; ruleVersion: string } | null
@@ -31,3 +32,14 @@ export interface DashboardData {
   targets: Record<string, string>
 }
 export interface AuditEvent { id: string; action: string; actor: string; detail: string; createdAt: string }
+
+export interface ConfidenceBreakdown {
+  method: string;
+  mapping_weight: number;
+  ocr_weight: number;
+  mapping_confidence: number;
+  ocr_confidence: number;
+  populated_fields: number;
+  required_field_confidence: number;
+  required_fields_present: number;
+}

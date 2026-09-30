@@ -30,18 +30,22 @@ export async function getInvoices(status?: JobStatus): Promise<PageResponse<Invo
   const content = response.data.map(normalizeInvoice).filter((invoice) => !status || invoice.status === status)
   return { content, totalElements: content.length, totalPages: 1, number: 0, size: 100 }
 }
+
 export async function getInvoice(id: string): Promise<InvoiceJob> {
   const response = await api.get<InvoiceJob | Record<string, unknown>>(`/invoices/${id}`)
   return normalizeInvoice(response.data as Record<string, unknown>)
 }
+
 export const getEvents = async (id: string) => (await api.get<AuditEvent[]>(`/invoices/${id}/events`)).data
 export const getInvoiceSourceUrl = (id: string) => `${api.defaults.baseURL}/invoices/${encodeURIComponent(id)}/source`
 export const getInvoiceAuditUrl = (id: string) => `${api.defaults.baseURL}/invoices/${encodeURIComponent(id)}/audit`
 export const getBatchAuditUrl = (id: string) => `${api.defaults.baseURL}/batches/${encodeURIComponent(id)}/audit`
 
-export async function uploadInvoices(files: File[]) {
+export async function uploadInvoices(files: File[], invoiceType: 'STANDARD' | 'TES' = 'STANDARD') {
   const form = new FormData()
   files.forEach(file => form.append('files', file))
+  form.append('invoiceType', invoiceType)
+  
   return (await api.post('/invoices', form)).data as { batchId: string; jobs: Array<{ id: string; filename: string; status: JobStatus; duplicate: boolean; message: string }> }
 }
 

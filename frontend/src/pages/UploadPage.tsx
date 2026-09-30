@@ -6,21 +6,32 @@ import { Alert, Box, Button, Card, CardContent, Chip, IconButton, LinearProgress
 import { useNavigate } from 'react-router-dom'
 import { uploadInvoices } from '../api'
 
-export function UploadPage() {
+export function UploadPage({ invoiceType = 'STANDARD' }: { invoiceType?: 'STANDARD' | 'TES' }) {
   const input = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
   const add = (incoming: FileList | null) => setFiles(current => [...current, ...Array.from(incoming || [])].slice(0, 100))
+
   const submit = async () => {
     setBusy(true); setError('')
-    try { await uploadInvoices(files); navigate('/invoices') }
-    catch (failure) { setError(failure instanceof Error ? failure.message : 'Upload failed') }
-    finally { setBusy(false) }
+    try { 
+      await uploadInvoices(files, invoiceType); 
+      navigate('/invoices') 
+    } catch (failure) { 
+      setError(failure instanceof Error ? failure.message : 'Upload failed') 
+    } finally { 
+      setBusy(false) 
+    }
   }
+
   return <Stack spacing={3}>
-    <Box><Typography variant="h1">Submit invoice batch</Typography><Typography color="text.secondary" mt={.7}>Upload up to 100 invoices. Each document receives its own traceable processing job.</Typography></Box>
+    <Box>
+      <Typography variant="h1">{invoiceType === 'TES' ? 'Submit terminal invoices' : 'Submit invoice batch'}</Typography>
+      <Typography color="text.secondary" mt={.7}>Upload up to 100 invoices. Each document receives its own traceable processing job.</Typography>
+    </Box>
     {error && <Alert severity="error">{error}</Alert>}
     <Card><CardContent sx={{ p: { xs: 2, md: 4 } }}>
       <Box className="dropzone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); add(event.dataTransfer.files) }} onClick={() => input.current?.click()}>
